@@ -18,13 +18,15 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Modelau Cronfa Ddata ---
+# --- Տվյալների բազայի մոդելներ ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
     phone = db.Column(db.String(30), nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    is_pro = db.Column(db.Boolean, default=False)  # Statws PRO
+    is_pro = db.Column(db.Boolean, default=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -40,7 +42,7 @@ class Product(db.Model):
     address = db.Column(db.String(200), nullable=False, default="Երևան")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    is_vip = db.Column(db.Boolean, default=False)  # Statws VIP
+    is_vip = db.Column(db.Boolean, default=False)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -60,8 +62,14 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
+    # ԱՎՏՈՄԱՏ ՍՏՈՒԳՈՒՄ. եթե կա այս Gmail-ը, դարձնում ենք ադմին ու պրո
+    admin_user = User.query.filter_by(email='haykazaryan@gmail.com').first()
+    if admin_user:
+        admin_user.is_admin = True
+        admin_user.is_pro = True
+        db.session.commit()
 
-# --- Caching Cyfraddau Gyfnewid ---
+# --- Փոխարժեքների քեշավորում ---
 RATES_CACHE = {
     'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24},
     'last_update': 0
@@ -88,7 +96,7 @@ CURRENCY_CONFIG = {
     'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
 }
 
-# --- Cyfieithiadau Amlieithog ---
+# --- Թարգմանություններ ---
 TRANSLATIONS = {
     'hy': {
         'login': 'Մուտք',
@@ -103,6 +111,7 @@ TRANSLATIONS = {
         'write': '💬 Գրել',
         'add_to_cart': '🛒 Զամբյուղ',
         'username': 'Օգտանուն (Username)',
+        'email': 'Gmail հասցե',
         'phone': 'Հեռախոսահամար',
         'password': 'Գաղտնաբառ',
         'product_name': 'Անվանում',
@@ -121,6 +130,8 @@ TRANSLATIONS = {
         'make_vip': '⭐ Դարձնել VIP (1,000 ֏)',
         'get_pro': '⚡ Գնել PRO (3,000 ֏/ամիս)',
         'pro_active': '👑 PRO Օգտատեր',
+        'admin_badge': '🛡️ ԱԴՄԻՆ',
+        'delete_product': '🗑️ Հեռացնել (Ադմին)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Կայքի միջնորդավճար (5%)',
         'final_total': 'Վերջնական գումար',
@@ -142,6 +153,7 @@ TRANSLATIONS = {
         'write': '💬 Написать',
         'add_to_cart': '🛒 В корзину',
         'username': 'Имя пользователя',
+        'email': 'Gmail адрес',
         'phone': 'Номер телефона',
         'password': 'Пароль',
         'product_name': 'Название товара',
@@ -160,6 +172,8 @@ TRANSLATIONS = {
         'make_vip': '⭐ Сделать VIP (1,000 ֏)',
         'get_pro': '⚡ Купить PRO (3,000 ֏/месяц)',
         'pro_active': '👑 PRO Пользователь',
+        'admin_badge': '🛡️ АДМИН',
+        'delete_product': '🗑️ Удалить (Админ)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Комиссия сайта (5%)',
         'final_total': 'Итоговая сумма',
@@ -181,6 +195,7 @@ TRANSLATIONS = {
         'write': '💬 Chat',
         'add_to_cart': '🛒 Add to Cart',
         'username': 'Username',
+        'email': 'Gmail Address',
         'phone': 'Phone Number',
         'password': 'Password',
         'product_name': 'Product Name',
@@ -199,6 +214,8 @@ TRANSLATIONS = {
         'make_vip': '⭐ Promote to VIP (1,000 ֏)',
         'get_pro': '⚡ Buy PRO (3,000 ֏/mo)',
         'pro_active': '👑 PRO User',
+        'admin_badge': '🛡️ ADMIN',
+        'delete_product': '🗑️ Delete (Admin)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Platform Commission (5%)',
         'final_total': 'Final Amount',
@@ -238,7 +255,7 @@ def format_price(price_in_amd):
 app.jinja_env.filters['format_price'] = format_price
 app.jinja_env.globals.update(t=t)
 
-# --- Cynllun HTML ---
+# --- HTML Ձևանմուշ ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
 <html lang="{{ current_lang }}">
@@ -251,7 +268,6 @@ HTML_LAYOUT = """
             font-family: Arial, sans-serif; 
             margin: 0; 
             padding: 0; 
-            /* Հետևի ֆոնի նկարը */
             background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('https://img.freepik.com/free-photo/showing-cart-trolley-shopping-online-sign-graphic_53876-133968.jpg'); 
             background-size: cover; 
             background-position: center; 
@@ -265,7 +281,6 @@ HTML_LAYOUT = """
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
         
-        /* Բաններ բաժին նկարով */
         .hero-banner {
             width: 100%;
             height: 280px;
@@ -283,16 +298,8 @@ HTML_LAYOUT = """
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
 
-        .hero-banner h2 {
-            font-size: 36px;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.6);
-        }
-
-        .hero-banner p {
-            font-size: 18px;
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
-        }
+        .hero-banner h2 { font-size: 36px; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.6); }
+        .hero-banner p { font-size: 18px; text-shadow: 1px 1px 3px rgba(0,0,0,0.6); }
 
         .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
@@ -304,6 +311,8 @@ HTML_LAYOUT = """
         .btn-success { background: #16a34a; }
         .btn-warning { background: #d97706; }
         .btn-info { background: #0284c7; }
+        .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
         .action-btns { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 10px; }
         form { background: white; padding: 25px; border-radius: 8px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .form-group { margin-bottom: 15px; text-align: left; }
@@ -326,8 +335,12 @@ HTML_LAYOUT = """
                 <a href="/change_lang/en" class="{{ 'active' if current_lang=='en' else '' }}">EN ($)</a>
             </span>
             {% if current_user.is_authenticated %}
-                <span>👤 {{ current_user.username }} {% if current_user.is_pro %}<span style="color:#f59e0b;">(PRO)</span>{% endif %}</span>
-                {% if not current_user.is_pro %}
+                <span>
+                    👤 {{ current_user.username }} 
+                    {% if current_user.is_admin %}<span style="color:#ef4444; font-weight:bold;">({{ t('admin_badge') }})</span>{% endif %}
+                    {% if current_user.is_pro %}<span style="color:#f59e0b;">(PRO)</span>{% endif %}
+                </span>
+                {% if not current_user.is_pro and not current_user.is_admin %}
                     <a href="/buy_pro" class="btn btn-warning" style="color:white;">{{ t('get_pro') }}</a>
                 {% endif %}
                 <a href="/add_product">{{ t('add_product') }}</a>
@@ -347,7 +360,7 @@ HTML_LAYOUT = """
 </html>
 """
 
-# --- Llwybrau (Routes) ---
+# --- Route-եր ---
 @app.route('/change_lang/<lang_code>')
 def change_lang(lang_code):
     if lang_code in CURRENCY_CONFIG:
@@ -361,7 +374,6 @@ def index():
     cart_count = sum(cart.values())
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <!-- Նկարով Բաններ -->
         <div class="hero-banner">
             <h2>{{ t('welcome_title') }}</h2>
             <p>{{ t('welcome_sub') }}</p>
@@ -387,6 +399,12 @@ def index():
                     {% if current_user.is_authenticated and p.user_id == current_user.id and not p.is_vip %}
                         <a href="/make_vip/{{ p.id }}" class="btn btn-warning">{{ t('make_vip') }}</a>
                     {% endif %}
+                    
+                    <!-- ԱԴՄԻՆԻ ՀԵՌԱՑՆԵԼՈՒ ԿՈՃԱԿ -->
+                    {% if current_user.is_authenticated and (current_user.is_admin or p.user_id == current_user.id) %}
+                        <a href="/delete_product/{{ p.id }}" class="btn btn-danger">{{ t('delete_product') }}</a>
+                    {% endif %}
+
                     <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t('add_to_cart') }}</a>
                 </div>
             </div>
@@ -395,6 +413,15 @@ def index():
         """),
         products=products, cart_count=cart_count, current_lang=get_current_lang()
     )
+
+@app.route('/delete_product/<int:product_id>')
+@login_required
+def delete_product(product_id):
+    product = Product.query.get_or_404(product_id)
+    if current_user.is_admin or product.user_id == current_user.id:
+        db.session.delete(product)
+        db.session.commit()
+    return redirect(url_for('index'))
 
 @app.route('/make_vip/<int:product_id>')
 @login_required
@@ -416,13 +443,22 @@ def buy_pro():
 def register():
     if request.method == 'POST':
         username = request.form['username']
+        email = request.form['email'].strip().lower()
         phone = request.form['phone']
         password = request.form['password']
 
         if User.query.filter_by(username=username).first():
             return t('user_exists')
 
-        user = User(username=username, phone=phone)
+        is_admin_user = (email == 'haykazaryan@gmail.com')
+
+        user = User(
+            username=username, 
+            email=email, 
+            phone=phone, 
+            is_admin=is_admin_user, 
+            is_pro=is_admin_user
+        )
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -436,6 +472,10 @@ def register():
             <div class="form-group">
                 <label>{{ t('username') }}</label>
                 <input type="text" name="username" required>
+            </div>
+            <div class="form-group">
+                <label>{{ t('email') }}</label>
+                <input type="email" name="email" placeholder="haykazaryan@gmail.com" required>
             </div>
             <div class="form-group">
                 <label>{{ t('phone') }}</label>
@@ -459,6 +499,11 @@ def login():
         user = User.query.filter_by(username=username).first()
 
         if user and user.check_password(password):
+            if user.email and user.email.lower() == 'haykazaryan@gmail.com':
+                user.is_admin = True
+                user.is_pro = True
+                db.session.commit()
+
             login_user(user)
             return redirect(url_for('index'))
         return t('invalid_login')
@@ -491,7 +536,7 @@ def logout():
 @login_required
 def add_product():
     user_products_count = Product.query.filter_by(user_id=current_user.id).count()
-    limit_reached = (not current_user.is_pro) and (user_products_count >= 3)
+    limit_reached = (not current_user.is_pro and not current_user.is_admin) and (user_products_count >= 3)
 
     if request.method == 'POST':
         if limit_reached:
