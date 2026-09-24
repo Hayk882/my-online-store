@@ -36,7 +36,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False)
     image_url = db.Column(db.String(500), nullable=False)
-    address = db.Column(db.String(200), nullable=False, default="Երևան")
+    address = db.Column(db.String(200), nullable=False, default="Ереван")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
@@ -86,8 +86,103 @@ CURRENCY_CONFIG = {
     'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
 }
 
+# --- Թարգմանություններ (Multilingual Translations) ---
+TRANSLATIONS = {
+    'hy': {
+        'login': 'Մուտք',
+        'register': 'Գրանցվել',
+        'logout': 'Դուրս գալ',
+        'add_product': '+ Ապրանք',
+        'messages': '💬 Նամակներ',
+        'cart': '🛒 Զամբյուղ',
+        'price': 'Գին',
+        'address': '📍 Հասցե',
+        'call': '📞 Զանգել',
+        'write': '💬 Գրել',
+        'add_to_cart': '🛒 Զամբյուղ',
+        'username': 'Օգտանուն (Username)',
+        'phone': 'Հեռախոսահամար',
+        'password': 'Գաղտնաբառ',
+        'product_name': 'Անվանում',
+        'product_price': 'Գին (AMD)',
+        'image_url': 'Նկարի հղում (URL)',
+        'where_to_pickup': 'Որտեղի՞ց վերցնել ապրանքը (Հասցե)',
+        'submit_add': 'Ավելացնել',
+        'my_messages': 'Իմ նամակագրությունները',
+        'no_messages': 'Դեռ ոչ մի նամակ չունեք:',
+        'send': 'Ուղարկել',
+        'write_msg_placeholder': 'Գրեք նամակ...',
+        'total': 'Ընդհանուր',
+        'empty_cart': 'Զամբյուղը դատարկ է:',
+        'user_exists': 'Այս օգտանունը արդեն զբաղված է:',
+        'invalid_login': 'Սխալ օգտանուն կամ գաղտնաբառ:'
+    },
+    'ru': {
+        'login': 'Войти',
+        'register': 'Регистрация',
+        'logout': 'Выйти',
+        'add_product': '+ Товар',
+        'messages': '💬 Сообщения',
+        'cart': '🛒 Корзина',
+        'price': 'Цена',
+        'address': '📍 Адрес',
+        'call': '📞 Позвонить',
+        'write': '💬 Написать',
+        'add_to_cart': '🛒 В корзину',
+        'username': 'Имя пользователя',
+        'phone': 'Номер телефона',
+        'password': 'Пароль',
+        'product_name': 'Название товара',
+        'product_price': 'Цена (AMD)',
+        'image_url': 'Ссылка на изображение (URL)',
+        'where_to_pickup': 'Откуда забрать товар (Адрес)',
+        'submit_add': 'Добавить',
+        'my_messages': 'Мои сообщения',
+        'no_messages': 'У вас пока нет сообщений.',
+        'send': 'Отправить',
+        'write_msg_placeholder': 'Напишите сообщение...',
+        'total': 'Итого',
+        'empty_cart': 'Корзина пуста.',
+        'user_exists': 'Это имя пользователя уже занято.',
+        'invalid_login': 'Неверное имя пользователя или пароль.'
+    },
+    'en': {
+        'login': 'Login',
+        'register': 'Register',
+        'logout': 'Logout',
+        'add_product': '+ Add Product',
+        'messages': '💬 Messages',
+        'cart': '🛒 Cart',
+        'price': 'Price',
+        'address': '📍 Address',
+        'call': '📞 Call',
+        'write': '💬 Chat',
+        'add_to_cart': '🛒 Add to Cart',
+        'username': 'Username',
+        'phone': 'Phone Number',
+        'password': 'Password',
+        'product_name': 'Product Name',
+        'product_price': 'Price (AMD)',
+        'image_url': 'Image URL',
+        'where_to_pickup': 'Pickup Location (Address)',
+        'submit_add': 'Add Product',
+        'my_messages': 'My Messages',
+        'no_messages': 'You have no messages yet.',
+        'send': 'Send',
+        'write_msg_placeholder': 'Write a message...',
+        'total': 'Total',
+        'empty_cart': 'Cart is empty.',
+        'user_exists': 'Username already exists.',
+        'invalid_login': 'Invalid username or password.'
+    }
+}
+
 def get_current_lang():
     return session.get('lang', 'hy')
+
+def t(key):
+    lang = get_current_lang()
+    return TRANSLATIONS.get(lang, TRANSLATIONS['hy']).get(key, key)
 
 def format_price(price_in_amd):
     try:
@@ -109,11 +204,12 @@ def format_price(price_in_amd):
         return f"{config['symbol']}{converted_price:.2f}"
 
 app.jinja_env.filters['format_price'] = format_price
+app.jinja_env.globals.update(t=t)
 
 # --- HTML Շաբլոն ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
-<html lang="hy">
+<html lang="{{ current_lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -155,14 +251,14 @@ HTML_LAYOUT = """
             </span>
             {% if current_user.is_authenticated %}
                 <span>👤 {{ current_user.username }}</span>
-                <a href="/add_product">+ Ապրանք</a>
-                <a href="/messages">💬 Նամակներ</a>
-                <a href="/logout">Դուրս գալ</a>
+                <a href="/add_product">{{ t('add_product') }}</a>
+                <a href="/messages">{{ t('messages') }}</a>
+                <a href="/logout">{{ t('logout') }}</a>
             {% else %}
-                <a href="/login">Մուտք</a>
-                <a href="/register">Գրանցվել</a>
+                <a href="/login">{{ t('login') }}</a>
+                <a href="/register">{{ t('register') }}</a>
             {% endif %}
-            <a href="/cart">🛒 ({{ cart_count }})</a>
+            <a href="/cart">{{ t('cart') }} ({{ cart_count }})</a>
         </nav>
     </header>
     <div class="container">
@@ -191,16 +287,16 @@ def index():
             <div class="card">
                 <img src="{{ p.image_url }}" alt="{{ p.name }}">
                 <h3>{{ p.name }}</h3>
-                <p><strong>Գին:</strong> {{ p.price | format_price }}</p>
-                <p>📍 <strong>Հասցե:</strong> {{ p.address }}</p>
+                <p><strong>{{ t('price') }}:</strong> {{ p.price | format_price }}</p>
+                <p>{{ t('address') }}: {{ p.address }}</p>
                 <div class="action-btns">
                     {% if p.seller_phone %}
-                        <a href="tel:{{ p.seller_phone }}" class="btn btn-success">📞 Զանգել</a>
+                        <a href="tel:{{ p.seller_phone }}" class="btn btn-success">{{ t('call') }}</a>
                     {% endif %}
                     {% if current_user.is_authenticated and p.user_id and p.user_id != current_user.id %}
-                        <a href="/chat/{{ p.user_id }}?product_id={{ p.id }}" class="btn btn-info">💬 Գրել</a>
+                        <a href="/chat/{{ p.user_id }}?product_id={{ p.id }}" class="btn btn-info">{{ t('write') }}</a>
                     {% endif %}
-                    <a href="/add_to_cart/{{ p.id }}" class="btn">🛒 Զամբյուղ</a>
+                    <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t('add_to_cart') }}</a>
                 </div>
             </div>
             {% endfor %}
@@ -217,7 +313,7 @@ def register():
         password = request.form['password']
 
         if User.query.filter_by(username=username).first():
-            return "Այս օգտանունը արդեն զբաղված է:"
+            return t('user_exists')
 
         user = User(username=username, phone=phone)
         user.set_password(password)
@@ -229,20 +325,20 @@ def register():
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <form method="POST">
-            <h2>Գրանցում</h2>
+            <h2>{{ t('register') }}</h2>
             <div class="form-group">
-                <label>Օգտանուն (Username)</label>
+                <label>{{ t('username') }}</label>
                 <input type="text" name="username" required>
             </div>
             <div class="form-group">
-                <label>Հեռախոսահամար</label>
+                <label>{{ t('phone') }}</label>
                 <input type="text" name="phone" placeholder="+374 99 123456" required>
             </div>
             <div class="form-group">
-                <label>Գաղտնաբառ</label>
+                <label>{{ t('password') }}</label>
                 <input type="password" name="password" required>
             </div>
-            <button type="submit" class="btn">Գրանցվել</button>
+            <button type="submit" class="btn">{{ t('register') }}</button>
         </form>
         """),
         cart_count=0, current_lang=get_current_lang()
@@ -258,21 +354,21 @@ def login():
         if user and user.check_password(password):
             login_user(user)
             return redirect(url_for('index'))
-        return "Սխալ օգտանուն կամ գաղտնաբառ:"
+        return t('invalid_login')
 
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <form method="POST">
-            <h2>Մուտք</h2>
+            <h2>{{ t('login') }}</h2>
             <div class="form-group">
-                <label>Օգտանուն</label>
+                <label>{{ t('username') }}</label>
                 <input type="text" name="username" required>
             </div>
             <div class="form-group">
-                <label>Գաղտնաբառ</label>
+                <label>{{ t('password') }}</label>
                 <input type="password" name="password" required>
             </div>
-            <button type="submit" class="btn">Մուտք գործել</button>
+            <button type="submit" class="btn">{{ t('login') }}</button>
         </form>
         """),
         cart_count=0, current_lang=get_current_lang()
@@ -305,24 +401,24 @@ def add_product():
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <form method="POST">
-            <h2>Ավելացնել Ապրանք</h2>
+            <h2>{{ t('add_product') }}</h2>
             <div class="form-group">
-                <label>Անվանում</label>
+                <label>{{ t('product_name') }}</label>
                 <input type="text" name="name" required>
             </div>
             <div class="form-group">
-                <label>Գին (AMD)</label>
+                <label>{{ t('product_price') }}</label>
                 <input type="number" step="1" name="price" required>
             </div>
             <div class="form-group">
-                <label>Նկարի հղում (URL)</label>
+                <label>{{ t('image_url') }}</label>
                 <input type="url" name="image_url" required>
             </div>
             <div class="form-group">
-                <label>Որտեղի՞ց վերցնել ապրանքը (Հասցե)</label>
-                <input type="text" name="address" placeholder="օր․ Երևան, Կենտրոն, Մաշտոցի 10" required>
+                <label>{{ t('where_to_pickup') }}</label>
+                <input type="text" name="address" required>
             </div>
-            <button type="submit" class="btn">Ավելացնել</button>
+            <button type="submit" class="btn">{{ t('submit_add') }}</button>
         </form>
         """),
         cart_count=0, current_lang=get_current_lang()
@@ -354,8 +450,8 @@ def chat(receiver_id):
 
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>💬 Չաթ: {{ receiver.username }}</h2>
-        <p>📱 Հեռախոս: <a href="tel:{{ receiver.phone }}">{{ receiver.phone }}</a></p>
+        <h2>💬 {{ receiver.username }}</h2>
+        <p>📱 {{ t('phone') }}: <a href="tel:{{ receiver.phone }}">{{ receiver.phone }}</a></p>
         <div class="chat-box">
             {% for msg in messages %}
                 <div class="message {{ 'my-msg' if msg.sender_id == current_user.id else 'other-msg' }}">
@@ -365,9 +461,9 @@ def chat(receiver_id):
         </div>
         <form method="POST" style="max-width: 100%;">
             <div class="form-group">
-                <input type="text" name="content" placeholder="Գրեք նամակ..." required>
+                <input type="text" name="content" placeholder="{{ t('write_msg_placeholder') }}" required>
             </div>
-            <button type="submit" class="btn btn-success">Ուղարկել</button>
+            <button type="submit" class="btn btn-success">{{ t('send') }}</button>
         </form>
         """),
         messages=messages, receiver=receiver, cart_count=0, current_lang=get_current_lang()
@@ -383,7 +479,7 @@ def messages():
 
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>Իմ նամակագրությունները</h2>
+        <h2>{{ t('my_messages') }}</h2>
         {% if users %}
             <ul>
             {% for u in users %}
@@ -391,7 +487,7 @@ def messages():
             {% endfor %}
             </ul>
         {% else %}
-            <p>Դեռ ոչ մի նամակ չունեք:</p>
+            <p>{{ t('no_messages') }}</p>
         {% endif %}
         """),
         users=users, cart_count=0, current_lang=get_current_lang()
@@ -417,16 +513,16 @@ def cart():
             total += product.price * qty
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>🛒 Զամբյուղ</h2>
+        <h2>{{ t('cart') }}</h2>
         {% if items %}
             <ul>
             {% for item in items %}
-                <li>{{ item.name }} - {{ item.price | format_price }} (📍 {{ item.address }})</li>
+                <li>{{ item.name }} - {{ item.price | format_price }} ({{ t('address') }}: {{ item.address }})</li>
             {% endfor %}
             </ul>
-            <h3>Ընդհանուր: {{ total | format_price }}</h3>
+            <h3>{{ t('total') }}: {{ total | format_price }}</h3>
         {% else %}
-            <p>Զամբյուղը դատարկ է:</p>
+            <p>{{ t('empty_cart') }}</p>
         {% endif %}
         """),
         items=items, total=total, cart_count=sum(cart.values()), current_lang=get_current_lang()
