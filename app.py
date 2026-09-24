@@ -247,7 +247,18 @@ HTML_LAYOUT = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>One-Shop</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; }
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            /* Հետևի ֆոնի նկարը */
+            background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('https://img.freepik.com/free-photo/showing-cart-trolley-shopping-online-sign-graphic_53876-133968.jpg'); 
+            background-size: cover; 
+            background-position: center; 
+            background-repeat: no-repeat; 
+            background-attachment: fixed; 
+            min-height: 100vh;
+        }
         header { background: #1f2937; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
         header a { color: white; text-decoration: none; font-weight: bold; margin-left: 12px; }
         .lang-picker a { color: #f3f4f6; margin-left: 5px; text-decoration: none; }
@@ -257,8 +268,8 @@ HTML_LAYOUT = """
         /* Բաններ բաժին նկարով */
         .hero-banner {
             width: 100%;
-            height: 320px;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://images.unsplash.com/photo-1472851294608-062f824d29cc?q=80&w=1200');
+            height: 280px;
+            background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://img.freepik.com/free-photo/showing-cart-trolley-shopping-online-sign-graphic_53876-133968.jpg');
             background-size: cover;
             background-position: center;
             border-radius: 12px;
