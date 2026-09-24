@@ -21,7 +21,7 @@ with app.app_context():
 # --- Թարգմանություններ ---
 TRANSLATIONS = {
     'hy': {
-        'title': 'Առցանց Խանութ',
+        'title': 'One-Shop',
         'add_product': 'Ավելացնել Ապրանք',
         'cart': 'Զամբյուղ',
         'price': 'Գին',
@@ -34,7 +34,7 @@ TRANSLATIONS = {
         'remove': 'Ջնջել'
     },
     'ru': {
-        'title': 'Онлайн Магазин',
+        'title': 'One-Shop',
         'add_product': 'Добавить товар',
         'cart': 'Корзина',
         'price': 'Цена',
@@ -47,7 +47,7 @@ TRANSLATIONS = {
         'remove': 'Удалить'
     },
     'en': {
-        'title': 'Online Store',
+        'title': 'One-Shop',
         'add_product': 'Add Product',
         'cart': 'Cart',
         'price': 'Price',
@@ -60,10 +60,6 @@ TRANSLATIONS = {
         'remove': 'Remove'
     }
 }
-
-def get_t():
-    lang = session.get('lang', 'hy')
-    return TRANSLATIONS.get(lang, TRANSLATIONS['hy'])
 
 # --- HTML Շաբլոն ---
 HTML_LAYOUT = """
