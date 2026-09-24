@@ -128,15 +128,15 @@ TRANSLATIONS = {
         'user_exists': 'Այս օգտանունը արդեն զբաղված է:',
         'invalid_login': 'Սխալ օգտանուն կամ գաղտնաբառ:',
         'make_vip': '⭐ Դարձնել VIP (1,000 ֏)',
-        'get_pro': '⚡ Գնել PRO (3,000 ֏/ամիս)',
+        'get_pro': '📝 Դիմել PRO-ի համար',
         'pro_active': '👑 PRO Օգտատեր',
         'admin_badge': '🛡️ ԱԴՄԻՆ',
         'delete_product': '🗑️ Հեռացնել (Ադմին)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Կայքի միջնորդավճար (5%)',
         'final_total': 'Վերջնական գումար',
-        'limit_reached': 'Դուք արդեն ավելացրել եք 3 ապրանք: Ավելին ավելացնելու համար գնեք PRO:',
-        'buy_pro_now': 'Գնել PRO հիմա',
+        'limit_reached': 'Դուք արդեն ավելացրել եք 3 ապրանք: Ավելին ավելացնելու համար դիմեք Ադմինին PRO ստանալու համար:',
+        'buy_pro_now': 'Դիմել Ադմինին PRO-ի համար',
         'welcome_title': 'Բարի գալուստ One-Shop',
         'welcome_sub': 'Գտեք լավագույն ապրանքները լավագույն գներով'
     },
@@ -170,15 +170,15 @@ TRANSLATIONS = {
         'user_exists': 'Это имя пользователя уже занято.',
         'invalid_login': 'Неверное имя пользователя или пароль.',
         'make_vip': '⭐ Сделать VIP (1,000 ֏)',
-        'get_pro': '⚡ Купить PRO (3,000 ֏/месяц)',
+        'get_pro': '📝 Заявка на PRO',
         'pro_active': '👑 PRO Пользователь',
         'admin_badge': '🛡️ АДМИН',
         'delete_product': '🗑️ Удалить (Админ)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Комиссия сайта (5%)',
         'final_total': 'Итоговая сумма',
-        'limit_reached': 'Вы уже добавили 3 товара. Чтобы добавлять больше, купите PRO аккаунт.',
-        'buy_pro_now': 'Купить PRO сейчас',
+        'limit_reached': 'Вы уже добавили 3 товара. Чтобы добавлять больше, обратитесь к Админу за PRO.',
+        'buy_pro_now': 'Написать Админу',
         'welcome_title': 'Добро пожаловать в One-Shop',
         'welcome_sub': 'Найдите лучшие товары по лучшим ценам'
     },
@@ -212,15 +212,15 @@ TRANSLATIONS = {
         'user_exists': 'Username already exists.',
         'invalid_login': 'Invalid username or password.',
         'make_vip': '⭐ Promote to VIP (1,000 ֏)',
-        'get_pro': '⚡ Buy PRO (3,000 ֏/mo)',
+        'get_pro': '📝 Apply for PRO',
         'pro_active': '👑 PRO User',
         'admin_badge': '🛡️ ADMIN',
         'delete_product': '🗑️ Delete (Admin)',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Platform Commission (5%)',
         'final_total': 'Final Amount',
-        'limit_reached': 'You have reached the 3-product limit. Upgrade to PRO to post unlimited products.',
-        'buy_pro_now': 'Buy PRO Now',
+        'limit_reached': 'You have reached the 3-product limit. Contact Admin to get PRO.',
+        'buy_pro_now': 'Contact Admin',
         'welcome_title': 'Welcome to One-Shop',
         'welcome_sub': 'Find the best deals at the best prices'
     }
@@ -278,7 +278,6 @@ HTML_LAYOUT = """
         header { background: #1f2937; color: white; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
         header a { color: white; text-decoration: none; font-weight: bold; margin-left: 12px; }
         
-        /* Լոգոյի ոճեր */
         .logo-container { display: flex; align-items: center; text-decoration: none; }
         .logo-img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #f59e0b; margin-right: 10px; }
         .logo-text { font-size: 20px; color: white; font-weight: bold; }
@@ -287,7 +286,6 @@ HTML_LAYOUT = """
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
         
-        /* Ուղղանկյուն Բաններ՝ քո նոր նկարով */
         .hero-banner {
             width: 100%;
             height: 220px;
@@ -352,7 +350,7 @@ HTML_LAYOUT = """
                     {% if current_user.is_pro %}<span style="color:#f59e0b;">(PRO)</span>{% endif %}
                 </span>
                 {% if not current_user.is_pro and not current_user.is_admin %}
-                    <a href="/buy_pro" class="btn btn-warning" style="color:white;">{{ t('get_pro') }}</a>
+                    <a href="/request_pro" class="btn btn-warning" style="color:white;">{{ t('get_pro') }}</a>
                 {% endif %}
                 <a href="/add_product">{{ t('add_product') }}</a>
                 <a href="/messages">{{ t('messages') }}</a>
@@ -442,12 +440,22 @@ def make_vip(product_id):
         db.session.commit()
     return redirect(url_for('index'))
 
-@app.route('/buy_pro')
+@app.route('/request_pro')
 @login_required
-def buy_pro():
-    current_user.is_pro = True
-    db.session.commit()
-    return redirect(url_for('add_product'))
+def request_pro():
+    # Գտնում ենք ադմինին (haykazaryan3@gmail.com)
+    admin_user = User.query.filter_by(email='haykazaryan3@gmail.com').first()
+    if admin_user and admin_user.id != current_user.id:
+        # Ավտոմատ ուղարկում ենք նամակ ադմինին օգտատիրոջ խնդրանքով
+        auto_msg = Message(
+            sender_id=current_user.id,
+            receiver_id=admin_user.id,
+            content="Բարև ձեզ, ես ցանկանում եմ ձեռք բերել PRO կարգավիճակ։ Խնդրում եմ կապվել ինձ հետ վճարման համար։"
+        )
+        db.session.add(auto_msg)
+        db.session.commit()
+        return redirect(url_for('chat', receiver_id=admin_user.id))
+    return redirect(url_for('index'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -571,7 +579,7 @@ def add_product():
         {% if limit_reached %}
             <div class="alert-box">
                 <p><strong>⚠️ {{ t('limit_reached') }}</strong></p>
-                <a href="/buy_pro" class="btn btn-warning" style="color:white; margin-top:10px;">{{ t('buy_pro_now') }}</a>
+                <a href="/request_pro" class="btn btn-warning" style="color:white; margin-top:10px;">{{ t('buy_pro_now') }}</a>
             </div>
         {% else %}
             <form method="POST">
