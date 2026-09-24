@@ -13,18 +13,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# --- Flask-Login Կարգավորումներ ---
+# --- Config Flask-Login ---
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Տվյալների Բազայի Մոդելներ ---
+# --- Modelau Cronfa Ddata ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     phone = db.Column(db.String(30), nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    is_pro = db.Column(db.Boolean, default=False)  # PRO status
+    is_pro = db.Column(db.Boolean, default=False)  # Statws PRO
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -40,7 +40,7 @@ class Product(db.Model):
     address = db.Column(db.String(200), nullable=False, default="Ереван")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    is_vip = db.Column(db.Boolean, default=False)  # VIP Status
+    is_vip = db.Column(db.Boolean, default=False)  # Statws VIP
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -61,7 +61,7 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
 
-# --- Փոխարժեքների Քեշավորում ---
+# --- Caching Cyfraddau Gyfnewid ---
 RATES_CACHE = {
     'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24},
     'last_update': 0
@@ -79,7 +79,7 @@ def get_exchange_rates():
                     RATES_CACHE['rates']['RUB'] = data['rates'].get('RUB', 0.24)
                     RATES_CACHE['last_update'] = now
         except Exception as e:
-            print("Փոխարժեքի API սխալ:", e)
+            print("Gwall API Gyfnewid:", e)
     return RATES_CACHE['rates']
 
 CURRENCY_CONFIG = {
@@ -88,7 +88,7 @@ CURRENCY_CONFIG = {
     'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
 }
 
-# --- Թարգմանություններ (Multilingual Translations) ---
+# --- Cyfieithiadau Amlieithog ---
 TRANSLATIONS = {
     'hy': {
         'login': 'Մուտք',
@@ -123,7 +123,9 @@ TRANSLATIONS = {
         'pro_active': '👑 PRO Օգտատեր',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Կայքի միջնորդավճար (5%)',
-        'final_total': 'Վերջնական գումար'
+        'final_total': 'Վերջնական գումար',
+        'limit_reached': 'Դուք արդեն ավելացրել եք 3 ապրանք: Ավելին ավելացնելու համար գնեք PRO:',
+        'buy_pro_now': 'Գնել PRO հիմա'
     },
     'ru': {
         'login': 'Войти',
@@ -158,7 +160,9 @@ TRANSLATIONS = {
         'pro_active': '👑 PRO Пользователь',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Комиссия сайта (5%)',
-        'final_total': 'Итоговая сумма'
+        'final_total': 'Итоговая сумма',
+        'limit_reached': 'Вы уже добавили 3 товара. Чтобы добавлять больше, купите PRO аккаунт.',
+        'buy_pro_now': 'Купить PRO сейчас'
     },
     'en': {
         'login': 'Login',
@@ -193,7 +197,9 @@ TRANSLATIONS = {
         'pro_active': '👑 PRO User',
         'vip_tag': '🔥 TOP / VIP',
         'service_fee': 'Platform Commission (5%)',
-        'final_total': 'Final Amount'
+        'final_total': 'Final Amount',
+        'limit_reached': 'You have reached the 3-product limit. Upgrade to PRO to post unlimited products.',
+        'buy_pro_now': 'Buy PRO Now'
     }
 }
 
@@ -226,7 +232,7 @@ def format_price(price_in_amd):
 app.jinja_env.filters['format_price'] = format_price
 app.jinja_env.globals.update(t=t)
 
-# --- HTML Շաբլոն ---
+# --- Cynllun HTML ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
 <html lang="{{ current_lang }}">
@@ -260,6 +266,7 @@ HTML_LAYOUT = """
         .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
         .my-msg { background: #dcf8c6; text-align: right; }
         .other-msg { background: #e2e8f0; text-align: left; }
+        .alert-box { background: #fee2e2; border: 1px solid #ef4444; color: #991b1b; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -293,7 +300,7 @@ HTML_LAYOUT = """
 </html>
 """
 
-# --- Route-եր ---
+# --- Llwybrau (Routes) ---
 @app.route('/change_lang/<lang_code>')
 def change_lang(lang_code):
     if lang_code in CURRENCY_CONFIG:
@@ -302,7 +309,6 @@ def change_lang(lang_code):
 
 @app.route('/')
 def index():
-    # VIP ապրանքները ցուցադրվում են ամենավերևում
     products = Product.query.order_by(Product.is_vip.desc(), Product.id.desc()).all()
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
@@ -351,7 +357,7 @@ def make_vip(product_id):
 def buy_pro():
     current_user.is_pro = True
     db.session.commit()
-    return redirect(url_for('index'))
+    return redirect(url_for('add_product'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -431,7 +437,14 @@ def logout():
 @app.route('/add_product', methods=['GET', 'POST'])
 @login_required
 def add_product():
+    # Gwiriad terfyn: O ddim yn PRO ac eisoes wedi cyhoeddi 3 eitem neu fwy
+    user_products_count = Product.query.filter_by(user_id=current_user.id).count()
+    limit_reached = (not current_user.is_pro) and (user_products_count >= 3)
+
     if request.method == 'POST':
+        if limit_reached:
+            return redirect(url_for('add_product'))
+
         name = request.form['name']
         price = float(request.form['price'])
         image_url = request.form['image_url']
@@ -448,28 +461,35 @@ def add_product():
 
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <form method="POST">
-            <h2>{{ t('add_product') }}</h2>
-            <div class="form-group">
-                <label>{{ t('product_name') }}</label>
-                <input type="text" name="name" required>
+        {% if limit_reached %}
+            <div class="alert-box">
+                <p><strong>⚠️ {{ t('limit_reached') }}</strong></p>
+                <a href="/buy_pro" class="btn btn-warning" style="color:white; margin-top:10px;">{{ t('buy_pro_now') }}</a>
             </div>
-            <div class="form-group">
-                <label>{{ t('product_price') }}</label>
-                <input type="number" step="1" name="price" required>
-            </div>
-            <div class="form-group">
-                <label>{{ t('image_url') }}</label>
-                <input type="url" name="image_url" required>
-            </div>
-            <div class="form-group">
-                <label>{{ t('where_to_pickup') }}</label>
-                <input type="text" name="address" required>
-            </div>
-            <button type="submit" class="btn">{{ t('submit_add') }}</button>
-        </form>
+        {% else %}
+            <form method="POST">
+                <h2>{{ t('add_product') }}</h2>
+                <div class="form-group">
+                    <label>{{ t('product_name') }}</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>{{ t('product_price') }}</label>
+                    <input type="number" step="1" name="price" required>
+                </div>
+                <div class="form-group">
+                    <label>{{ t('image_url') }}</label>
+                    <input type="url" name="image_url" required>
+                </div>
+                <div class="form-group">
+                    <label>{{ t('where_to_pickup') }}</label>
+                    <input type="text" name="address" required>
+                </div>
+                <button type="submit" class="btn">{{ t('submit_add') }}</button>
+            </form>
+        {% endif %}
         """),
-        cart_count=0, current_lang=get_current_lang()
+        limit_reached=limit_reached, cart_count=0, current_lang=get_current_lang()
     )
 
 @app.route('/chat/<int:receiver_id>', methods=['GET', 'POST'])
@@ -560,7 +580,6 @@ def cart():
                 items.append(product)
             subtotal += product.price * qty
 
-    # 5% Միջնորդավճարի հաշվարկ
     fee = subtotal * 0.05
     final_total = subtotal + fee
 
