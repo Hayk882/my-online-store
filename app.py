@@ -24,6 +24,7 @@ class User(db.Model, UserMixin):
     username = db.Column(db.String(80), unique=True, nullable=False)
     phone = db.Column(db.String(30), nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
+    is_pro = db.Column(db.Boolean, default=False)  # PRO status
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -39,6 +40,7 @@ class Product(db.Model):
     address = db.Column(db.String(200), nullable=False, default="Ереван")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    is_vip = db.Column(db.Boolean, default=False)  # VIP Status
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -115,7 +117,13 @@ TRANSLATIONS = {
         'total': 'Ընդհանուր',
         'empty_cart': 'Զամբյուղը դատարկ է:',
         'user_exists': 'Այս օգտանունը արդեն զբաղված է:',
-        'invalid_login': 'Սխալ օգտանուն կամ գաղտնաբառ:'
+        'invalid_login': 'Սխալ օգտանուն կամ գաղտնաբառ:',
+        'make_vip': '⭐ Դարձնել VIP (1,000 ֏)',
+        'get_pro': '⚡ Գնել PRO (3,000 ֏/ամիս)',
+        'pro_active': '👑 PRO Օգտատեր',
+        'vip_tag': '🔥 TOP / VIP',
+        'service_fee': 'Կայքի միջնորդավճար (5%)',
+        'final_total': 'Վերջնական գումար'
     },
     'ru': {
         'login': 'Войти',
@@ -144,7 +152,13 @@ TRANSLATIONS = {
         'total': 'Итого',
         'empty_cart': 'Корзина пуста.',
         'user_exists': 'Это имя пользователя уже занято.',
-        'invalid_login': 'Неверное имя пользователя или пароль.'
+        'invalid_login': 'Неверное имя пользователя или пароль.',
+        'make_vip': '⭐ Сделать VIP (1,000 ֏)',
+        'get_pro': '⚡ Купить PRO (3,000 ֏/месяц)',
+        'pro_active': '👑 PRO Пользователь',
+        'vip_tag': '🔥 TOP / VIP',
+        'service_fee': 'Комиссия сайта (5%)',
+        'final_total': 'Итоговая сумма'
     },
     'en': {
         'login': 'Login',
@@ -173,7 +187,13 @@ TRANSLATIONS = {
         'total': 'Total',
         'empty_cart': 'Cart is empty.',
         'user_exists': 'Username already exists.',
-        'invalid_login': 'Invalid username or password.'
+        'invalid_login': 'Invalid username or password.',
+        'make_vip': '⭐ Promote to VIP (1,000 ֏)',
+        'get_pro': '⚡ Buy PRO (3,000 ֏/mo)',
+        'pro_active': '👑 PRO User',
+        'vip_tag': '🔥 TOP / VIP',
+        'service_fee': 'Platform Commission (5%)',
+        'final_total': 'Final Amount'
     }
 }
 
@@ -222,18 +242,20 @@ HTML_LAYOUT = """
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
         .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
+        .card.vip { border: 2px solid #f59e0b; background: #fffbeb; }
+        .vip-badge { position: absolute; top: 10px; right: 10px; background: #f59e0b; color: white; padding: 3px 8px; font-size: 11px; border-radius: 4px; font-weight: bold; }
         .card img { width: 100%; height: 160px; object-fit: cover; border-radius: 5px; }
-        .btn { display: inline-block; background: #2563eb; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-top: 5px; font-size: 14px; }
+        .btn { display: inline-block; background: #2563eb; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-top: 5px; font-size: 13px; }
         .btn:hover { background: #1d4ed8; }
         .btn-success { background: #16a34a; }
-        .btn-danger { background: #dc2626; }
+        .btn-warning { background: #d97706; }
         .btn-info { background: #0284c7; }
         .action-btns { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 10px; }
         form { background: white; padding: 25px; border-radius: 8px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .form-group { margin-bottom: 15px; text-align: left; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-        .form-group input, .form-group textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .form-group input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         .chat-box { background: white; padding: 15px; border-radius: 8px; height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 15px; }
         .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
         .my-msg { background: #dcf8c6; text-align: right; }
@@ -250,7 +272,10 @@ HTML_LAYOUT = """
                 <a href="/change_lang/en" class="{{ 'active' if current_lang=='en' else '' }}">EN ($)</a>
             </span>
             {% if current_user.is_authenticated %}
-                <span>👤 {{ current_user.username }}</span>
+                <span>👤 {{ current_user.username }} {% if current_user.is_pro %}<span style="color:#f59e0b;">(PRO)</span>{% endif %}</span>
+                {% if not current_user.is_pro %}
+                    <a href="/buy_pro" class="btn btn-warning" style="color:white;">{{ t('get_pro') }}</a>
+                {% endif %}
                 <a href="/add_product">{{ t('add_product') }}</a>
                 <a href="/messages">{{ t('messages') }}</a>
                 <a href="/logout">{{ t('logout') }}</a>
@@ -277,14 +302,18 @@ def change_lang(lang_code):
 
 @app.route('/')
 def index():
-    products = Product.query.all()
+    # VIP ապրանքները ցուցադրվում են ամենավերևում
+    products = Product.query.order_by(Product.is_vip.desc(), Product.id.desc()).all()
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <div class="products-grid">
             {% for p in products %}
-            <div class="card">
+            <div class="card {{ 'vip' if p.is_vip else '' }}">
+                {% if p.is_vip %}
+                    <span class="vip-badge">{{ t('vip_tag') }}</span>
+                {% endif %}
                 <img src="{{ p.image_url }}" alt="{{ p.name }}">
                 <h3>{{ p.name }}</h3>
                 <p><strong>{{ t('price') }}:</strong> {{ p.price | format_price }}</p>
@@ -296,6 +325,9 @@ def index():
                     {% if current_user.is_authenticated and p.user_id and p.user_id != current_user.id %}
                         <a href="/chat/{{ p.user_id }}?product_id={{ p.id }}" class="btn btn-info">{{ t('write') }}</a>
                     {% endif %}
+                    {% if current_user.is_authenticated and p.user_id == current_user.id and not p.is_vip %}
+                        <a href="/make_vip/{{ p.id }}" class="btn btn-warning">{{ t('make_vip') }}</a>
+                    {% endif %}
                     <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t('add_to_cart') }}</a>
                 </div>
             </div>
@@ -304,6 +336,22 @@ def index():
         """),
         products=products, cart_count=cart_count, current_lang=get_current_lang()
     )
+
+@app.route('/make_vip/<int:product_id>')
+@login_required
+def make_vip(product_id):
+    product = Product.query.get_or_404(product_id)
+    if product.user_id == current_user.id:
+        product.is_vip = True
+        db.session.commit()
+    return redirect(url_for('index'))
+
+@app.route('/buy_pro')
+@login_required
+def buy_pro():
+    current_user.is_pro = True
+    db.session.commit()
+    return redirect(url_for('index'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -504,13 +552,18 @@ def add_to_cart(product_id):
 def cart():
     cart = session.get('cart', {})
     items = []
-    total = 0
+    subtotal = 0
     for p_id, qty in cart.items():
         product = Product.query.get(int(p_id))
         if product:
             for _ in range(qty):
                 items.append(product)
-            total += product.price * qty
+            subtotal += product.price * qty
+
+    # 5% Միջնորդավճարի հաշվարկ
+    fee = subtotal * 0.05
+    final_total = subtotal + fee
+
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <h2>{{ t('cart') }}</h2>
@@ -520,12 +573,15 @@ def cart():
                 <li>{{ item.name }} - {{ item.price | format_price }} ({{ t('address') }}: {{ item.address }})</li>
             {% endfor %}
             </ul>
-            <h3>{{ t('total') }}: {{ total | format_price }}</h3>
+            <hr>
+            <p>{{ t('total') }}: {{ subtotal | format_price }}</p>
+            <p><strong>{{ t('service_fee') }}:</strong> {{ fee | format_price }}</p>
+            <h3>{{ t('final_total') }}: {{ final_total | format_price }}</h3>
         {% else %}
             <p>{{ t('empty_cart') }}</p>
         {% endif %}
         """),
-        items=items, total=total, cart_count=sum(cart.values()), current_lang=get_current_lang()
+        items=items, subtotal=subtotal, fee=fee, final_total=final_total, cart_count=sum(cart.values()), current_lang=get_current_lang()
     )
 
 if __name__ == '__main__':
