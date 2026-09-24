@@ -4,7 +4,7 @@ import requests
 import time
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_store'
+app.secret_key = 'super_secret_key_for_store_123'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///shop.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -20,15 +20,13 @@ class Product(db.Model):
 with app.app_context():
     db.create_all()
 
-# --- Փոխարժեքների քեշավորում (կայքը չդանդաղեցնելու համար) ---
+# --- Փոխարժեքների քեշավորում ---
 RATES_CACHE = {'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24}, 'last_update': 0}
 
 def get_exchange_rates():
-    # Թարմացնել փոխարժեքները 1 ժամը մեկ անգամ
     now = time.time()
     if now - RATES_CACHE['last_update'] > 3600:
         try:
-            # Օգտագործում ենք անվճար API փոխարժեքների համար (Base: USD)
             res = requests.get('https://open.er-api.com/v6/latest/AMD', timeout=3)
             if res.status_code == 200:
                 data = res.json()
@@ -36,11 +34,11 @@ def get_exchange_rates():
                     RATES_CACHE['rates'] = data['rates']
                     RATES_CACHE['last_update'] = now
         except Exception as e:
-            print("Փոխարժեքը չստացվեց թարմացնել, օգտագործվում է պահպանվածը:", e)
+            print("Փոխարժեքի սխալ:", e)
             
     return RATES_CACHE['rates']
 
-# --- Թարգմանություններ և արժույթի նշաններ ---
+# --- Արժույթների կարգավորումներ ---
 CURRENCY_CONFIG = {
     'hy': {'code': 'AMD', 'symbol': '֏', 'rate_key': 'AMD'},
     'ru': {'code': 'RUB', 'symbol': '₽', 'rate_key': 'RUB'},
@@ -59,8 +57,7 @@ TRANSLATIONS = {
         'submit': 'Ավելացնել',
         'empty_cart': 'Ձեր զամբյուղը դատարկ է',
         'checkout': 'Ձևակերպել պատվերը',
-        'remove': 'Ջնջել',
-        'delete_prod': 'Ջնջել ապրանքը'
+        'remove': 'Ջնջել'
     },
     'ru': {
         'title': 'One-Shop',
@@ -73,8 +70,7 @@ TRANSLATIONS = {
         'submit': 'Добавить',
         'empty_cart': 'Ваша корзина пуста',
         'checkout': 'Оформить заказ',
-        'remove': 'Удалить',
-        'delete_prod': 'Удалить товар'
+        'remove': 'Удалить'
     },
     'en': {
         'title': 'One-Shop',
@@ -87,18 +83,20 @@ TRANSLATIONS = {
         'submit': 'Submit',
         'empty_cart': 'Your cart is empty',
         'checkout': 'Checkout',
-        'remove': 'Remove',
-        'delete_prod': 'Delete Product'
+        'remove': 'Remove'
     }
 }
 
+def get_current_lang():
+    return session.get('lang', 'hy')
+
 def get_t():
-    lang = session.get('lang', 'hy')
+    lang = get_current_lang()
     return TRANSLATIONS.get(lang, TRANSLATIONS['hy'])
 
-# --- Գնի փոխարկման ֆունկցիա HTML-ի համար ---
+# --- Գնի ձևավորում ըստ ընտրված լեզվի ---
 def format_price(price_in_amd):
-    lang = session.get('lang', 'hy')
+    lang = get_current_lang()
     config = CURRENCY_CONFIG.get(lang, CURRENCY_CONFIG['hy'])
     rates = get_exchange_rates()
     
@@ -133,7 +131,6 @@ HTML_LAYOUT = """
         .btn { display: inline-block; background: #2563eb; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-top: 10px; }
         .btn:hover { background: #1d4ed8; }
         .btn-danger { background: #dc2626; }
-        .btn-danger:hover { background: #b91c1c; }
         .action-btns { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
         form { background: white; padding: 25px; border-radius: 8px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .form-group { margin-bottom: 15px; text-align: left; }
@@ -149,9 +146,9 @@ HTML_LAYOUT = """
         <h1><a href="/">{{ t['title'] }}</a></h1>
         <nav>
             <span class="lang-picker">
-                <a href="/change_lang/hy" class="{{ 'active' if session.get('lang', 'hy')=='hy' else '' }}">AM (֏)</a> | 
-                <a href="/change_lang/ru" class="{{ 'active' if session.get('lang')=='ru' else '' }}">RU (₽)</a> | 
-                <a href="/change_lang/en" class="{{ 'active' if session.get('lang')=='en' else '' }}">EN ($)</a>
+                <a href="/change_lang/hy" class="{{ 'active' if current_lang=='hy' else '' }}">AM (֏)</a> | 
+                <a href="/change_lang/ru" class="{{ 'active' if current_lang=='ru' else '' }}">RU (₽)</a> | 
+                <a href="/change_lang/en" class="{{ 'active' if current_lang=='en' else '' }}">EN ($)</a>
             </span>
             <a href="/add_product">+ {{ t['add_product'] }}</a>
             <a href="/cart">🛒 {{ t['cart'] }} ({{ cart_count }})</a>
@@ -235,7 +232,7 @@ def index():
     products = Product.query.all()
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
-    return render_template_string(INDEX_TEMPLATE, products=products, cart_count=cart_count, t=get_t())
+    return render_template_string(INDEX_TEMPLATE, products=products, cart_count=cart_count, t=get_t(), current_lang=get_current_lang())
 
 @app.route('/add_product', methods=['GET', 'POST'])
 def add_product():
@@ -251,7 +248,7 @@ def add_product():
     
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
-    return render_template_string(ADD_PRODUCT_TEMPLATE, cart_count=cart_count, t=get_t())
+    return render_template_string(ADD_PRODUCT_TEMPLATE, cart_count=cart_count, t=get_t(), current_lang=get_current_lang())
 
 @app.route('/delete_product/<int:product_id>')
 def delete_product(product_id):
@@ -281,7 +278,7 @@ def cart():
             total += product.price * qty
             
     cart_count = sum(cart.values())
-    return render_template_string(CART_TEMPLATE, items=items, total=total, cart_count=cart_count, t=get_t())
+    return render_template_string(CART_TEMPLATE, items=items, total=total, cart_count=cart_count, t=get_t(), current_lang=get_current_lang())
 
 @app.route('/remove_from_cart/<int:product_id>')
 def remove_from_cart(product_id):
@@ -300,4 +297,3 @@ def checkout():
 
 if __name__ == '__main__':
     app.run(debug=True)
-    
