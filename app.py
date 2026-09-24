@@ -14,7 +14,7 @@ db = SQLAlchemy(app)
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    price = db.Column(db.Float, nullable=False)  # Գինը միշտ պահվում է ՀՀ ԴՐԱՄՈՎ (AMD)
+    price = db.Column(db.Float, nullable=False)  # Գինը պահվում է ՀՀ ԴՐԱՄՈՎ (AMD)
     image_url = db.Column(db.String(500), nullable=False)
 
 with app.app_context():
@@ -38,7 +38,7 @@ def get_exchange_rates():
             
     return RATES_CACHE['rates']
 
-# --- Արժույթների կարգավորումներ ---
+# --- Արժույթների կարգավորումներ (AM -> ֏, RU -> ₽, EN -> $) ---
 CURRENCY_CONFIG = {
     'hy': {'code': 'AMD', 'symbol': '֏', 'rate_key': 'AMD'},
     'ru': {'code': 'RUB', 'symbol': '₽', 'rate_key': 'RUB'},
@@ -105,6 +105,8 @@ def format_price(price_in_amd):
     
     if config['code'] == 'AMD':
         return f"{int(converted_price):,} {config['symbol']}"
+    elif config['code'] == 'RUB':
+        return f"{converted_price:.2f} {config['symbol']}"
     else:
         return f"{config['symbol']}{converted_price:.2f}"
 
@@ -297,3 +299,4 @@ def checkout():
 
 if __name__ == '__main__':
     app.run(debug=True)
+    
