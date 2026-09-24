@@ -31,7 +31,8 @@ TRANSLATIONS = {
         'submit': 'Ավելացնել',
         'empty_cart': 'Ձեր զամբյուղը դատարկ է',
         'checkout': 'Ձևակերպել պատվերը',
-        'remove': 'Ջնջել'
+        'remove': 'Ջնջել',
+        'delete_prod': 'Ջնջել ապրանքը'
     },
     'ru': {
         'title': 'One-Shop',
@@ -44,7 +45,8 @@ TRANSLATIONS = {
         'submit': 'Добавить',
         'empty_cart': 'Ваша корзина пуста',
         'checkout': 'Оформить заказ',
-        'remove': 'Удалить'
+        'remove': 'Удалить',
+        'delete_prod': 'Удалить товар'
     },
     'en': {
         'title': 'One-Shop',
@@ -57,7 +59,8 @@ TRANSLATIONS = {
         'submit': 'Submit',
         'empty_cart': 'Your cart is empty',
         'checkout': 'Checkout',
-        'remove': 'Remove'
+        'remove': 'Remove',
+        'delete_prod': 'Delete Product'
     }
 }
 
@@ -86,6 +89,8 @@ HTML_LAYOUT = """
         .btn { display: inline-block; background: #2563eb; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-top: 10px; }
         .btn:hover { background: #1d4ed8; }
         .btn-danger { background: #dc2626; }
+        .btn-danger:hover { background: #b91c1c; }
+        .action-btns { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
         form { background: white; padding: 25px; border-radius: 8px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .form-group { margin-bottom: 15px; text-align: left; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -122,7 +127,10 @@ INDEX_TEMPLATE = HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
         <img src="{{ p.image_url }}" alt="{{ p.name }}">
         <h3>{{ p.name }}</h3>
         <p><strong>{{ t['price'] }}:</strong> ${{ p.price }}</p>
-        <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t['buy'] }}</a>
+        <div class="action-btns">
+            <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t['buy'] }}</a>
+            <a href="/delete_product/{{ p.id }}" class="btn btn-danger" onclick="return confirm('Վստա՞հ եք, որ ուզում եք հանել վաճառքից։');">🗑️</a>
+        </div>
     </div>
     {% endfor %}
 </div>
@@ -200,6 +208,14 @@ def add_product():
     cart = session.get('cart', {})
     cart_count = sum(cart.values())
     return render_template_string(ADD_PRODUCT_TEMPLATE, cart_count=cart_count, t=get_t())
+
+@app.route('/delete_product/<int:product_id>')
+def delete_product(product_id):
+    product = Product.query.get(product_id)
+    if product:
+        db.session.delete(product)
+        db.session.commit()
+    return redirect(url_for('index'))
 
 @app.route('/add_to_cart/<int:product_id>')
 def add_to_cart(product_id):
