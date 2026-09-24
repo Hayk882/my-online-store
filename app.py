@@ -275,8 +275,14 @@ HTML_LAYOUT = """
             background-attachment: fixed; 
             min-height: 100vh;
         }
-        header { background: #1f2937; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        header { background: #1f2937; color: white; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
         header a { color: white; text-decoration: none; font-weight: bold; margin-left: 12px; }
+        
+        /* Լոգոյի ոճեր */
+        .logo-container { display: flex; align-items: center; text-decoration: none; }
+        .logo-img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #f59e0b; margin-right: 10px; }
+        .logo-text { font-size: 20px; color: white; font-weight: bold; }
+
         .lang-picker a { color: #f3f4f6; margin-left: 5px; text-decoration: none; }
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
@@ -325,7 +331,11 @@ HTML_LAYOUT = """
 </head>
 <body>
     <header>
-        <h1><a href="/">One-Shop</a></h1>
+        <a href="/" class="logo-container">
+            <!-- Քո նոր լոգոյի նկարը -->
+            <img src="https://i.ibb.co/3ykGZ2fN/One-Shop-circular-logo.png" alt="One-Shop Logo" class="logo-img">
+            <span class="logo-text">One-Shop</span>
+        </a>
         <nav>
             <span class="lang-picker">
                 <a href="/change_lang/hy" class="{{ 'active' if current_lang=='hy' else '' }}">AM (֏)</a> | 
