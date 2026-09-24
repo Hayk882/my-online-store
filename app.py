@@ -18,7 +18,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Tvjalneri bazayi modelner ---
+# --- Տվյալների բազայի մոդելներ ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -39,7 +39,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False)
     image_url = db.Column(db.String(500), nullable=False)
-    address = db.Column(db.String(200), nullable=False, default="Yerevan")
+    address = db.Column(db.String(200), nullable=False, default="Երևան")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     is_vip = db.Column(db.Boolean, default=False)
@@ -62,14 +62,14 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
-    # AVTOMAT ADMINI STUGUM
+    # ԱՎՏՈՄԱՏ ԱԴՄԻՆԻ ՍՏՈՒԳՈՒՄ
     admin_user = User.query.filter_by(email='haykazaryan3@gmail.com').first()
     if admin_user:
         admin_user.is_admin = True
         admin_user.is_pro = True
         db.session.commit()
 
-# --- Phoxarzheqneri qeshavorum ---
+# --- Փոխարժեքների քեշավորում ---
 RATES_CACHE = {
     'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24},
     'last_update': 0
@@ -96,7 +96,7 @@ CURRENCY_CONFIG = {
     'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
 }
 
-# --- Targmanutyunner ---
+# --- Թարգմանություններ ---
 TRANSLATIONS = {
     'hy': {
         'login': 'Մուտք',
@@ -255,7 +255,7 @@ def format_price(price_in_amd):
 app.jinja_env.filters['format_price'] = format_price
 app.jinja_env.globals.update(t=t)
 
-# --- HTML Dzevanmush ---
+# --- HTML Ձևանմուշ ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
 <html lang="{{ current_lang }}">
@@ -278,7 +278,7 @@ HTML_LAYOUT = """
         header { background: #1f2937; color: white; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
         header a { color: white; text-decoration: none; font-weight: bold; margin-left: 12px; }
         
-        /* Logoyi ojeric */
+        /* Լոգոյի ոճեր */
         .logo-container { display: flex; align-items: center; text-decoration: none; }
         .logo-img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #f59e0b; margin-right: 10px; }
         .logo-text { font-size: 20px; color: white; font-weight: bold; }
@@ -287,11 +287,11 @@ HTML_LAYOUT = """
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
         
-        /* Banner-i fonn u chapery dzer nshac nkarov */
+        /* Ուղղանկյուն Բաններ՝ քո նոր նկարով */
         .hero-banner {
             width: 100%;
             height: 220px;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url('https://cdn.discordapp.com/attachments/1324696987404075080/1552693490390138981/One_Shop_circular_logo.png?ex=6ab689ff&is=6ab5387f&hm=a6694c6fb85adea9a3901345afaa1ccb563155acc292eaf5e05077d9d7e40146&');
+            background-image: url('https://cdn.discordapp.com/attachments/1324696987404075080/1552711269033844736/One_Shop_logo1.png?ex=6ab69a8e&is=6ab5490e&hm=1a924d545c8effbb91bde2371ab0ab52bb9b5e13991e3783ee541f5c2faf9100&');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -306,8 +306,8 @@ HTML_LAYOUT = """
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
-        .hero-banner h2 { font-size: 32px; margin-bottom: 8px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
-        .hero-banner p { font-size: 16px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); }
+        .hero-banner h2 { font-size: 32px; margin-bottom: 8px; text-shadow: 2px 2px 4px rgba(0,0,0,0.9); }
+        .hero-banner p { font-size: 16px; text-shadow: 1px 1px 3px rgba(0,0,0,0.9); }
 
         .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
@@ -371,7 +371,7 @@ HTML_LAYOUT = """
 </html>
 """
 
-# --- Routes ---
+# --- Route-եր ---
 @app.route('/change_lang/<lang_code>')
 def change_lang(lang_code):
     if lang_code in CURRENCY_CONFIG:
