@@ -1,722 +1,764 @@
-from flask import Flask, render_template_string, request, redirect, url_for, session, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-import requests
-import time
 from datetime import datetime
+from flask import Flask, abort, flash, redirect, render_template_string, request, url_for
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_store_123'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///shop.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["SECRET_KEY"] = "super-secret-key-change-this"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///oneshop.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
-
-# --- Config Flask-Login ---
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = "login"
 
-# --- Տվյալների բազայի մոդելներ ---
-class User(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=True)
-    phone = db.Column(db.String(30), nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    is_pro = db.Column(db.Boolean, default=False)
-    is_admin = db.Column(db.Boolean, default=False)
+# --- DATABASE MODELS ---
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+class User(UserMixin, db.Model):
+  id = db.Column(db.Integer, primary_key=True)
+  username = db.Column(db.String(150), unique=True, nullable=False)
+  email = db.Column(db.String(150), unique=True, nullable=False)
+  password = db.Column(db.String(150), nullable=False)
+  is_admin = db.Column(db.Boolean, default=False)
+  is_pro = db.Column(db.Boolean, default=False)
+  products = db.relationship(
+      "Product", backref="seller", lazy=True, cascade="all, delete-orphan"
+  )
+
 
 class Product(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    price = db.Column(db.Float, nullable=False)
-    image_url = db.Column(db.String(500), nullable=False)
-    address = db.Column(db.String(200), nullable=False, default="Երևան")
-    seller_phone = db.Column(db.String(30), nullable=False, default="")
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    is_vip = db.Column(db.Boolean, default=False)
+  id = db.Column(db.Integer, primary_key=True)
+  title = db.Column(db.String(150), nullable=False)
+  description = db.Column(db.Text, nullable=False)
+  price = db.Column(db.Float, nullable=False)
+  category = db.Column(db.String(50), nullable=False, default="Այլ")
+  image_url = db.Column(db.String(500), nullable=True)
+  is_vip = db.Column(db.Boolean, default=False)
+  created_at = db.Column(db.DateTime, default=datetime.utcnow)
+  user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+
+
+class Favorite(db.Model):
+  id = db.Column(db.Integer, primary_key=True)
+  user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+  product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=False)
+
 
 class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=True)
-    content = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+  id = db.Column(db.Integer, primary_key=True)
+  sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+  receiver_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+  product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=True)
+  content = db.Column(db.Text, nullable=False)
+  timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-    sender = db.relationship('User', foreign_keys=[sender_id])
-    receiver = db.relationship('User', foreign_keys=[receiver_id])
-    product = db.relationship('Product')
+  sender = db.relationship("User", foreign_keys=[sender_id])
+  receiver = db.relationship("User", foreign_keys=[receiver_id])
+  product = db.relationship("Product")
+
 
 @login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+v_user(user_id):
+  return User.query.get(int(user_id))
 
-with app.app_context():
-    db.create_all()
-    # ԱՎՏՈՄԱՏ ԱԴՄԻՆԻ ՍՏՈՒԳՈՒՄ
-    admin_user = User.query.filter_by(email='haykazaryan3@gmail.com').first()
-    if admin_user:
-        admin_user.is_admin = True
-        admin_user.is_pro = True
-        db.session.commit()
 
-# --- Փոխարժեքների քեշավորում ---
-RATES_CACHE = {
-    'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24},
-    'last_update': 0
-}
-
-def get_exchange_rates():
-    now = time.time()
-    if now - RATES_CACHE['last_update'] > 3600:
-        try:
-            res = requests.get('https://open.er-api.com/v6/latest/AMD', timeout=3)
-            if res.status_code == 200:
-                data = res.json()
-                if data.get('result') == 'success' and 'rates' in data:
-                    RATES_CACHE['rates']['USD'] = data['rates'].get('USD', 0.0026)
-                    RATES_CACHE['rates']['RUB'] = data['rates'].get('RUB', 0.24)
-                    RATES_CACHE['last_update'] = now
-        except Exception as e:
-            print("Gwall API Gyfnewid:", e)
-    return RATES_CACHE['rates']
-
-CURRENCY_CONFIG = {
-    'hy': {'code': 'AMD', 'symbol': '֏', 'rate_key': 'AMD'},
-    'ru': {'code': 'RUB', 'symbol': '₽', 'rate_key': 'RUB'},
-    'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
-}
-
-# --- Թարգմանություններ ---
-TRANSLATIONS = {
-    'hy': {
-        'login': 'Մուտք',
-        'register': 'Գրանցվել',
-        'logout': 'Դուրս գալ',
-        'add_product': '+ Ապրանք',
-        'messages': '💬 Նամակներ',
-        'cart': '🛒 Զամբյուղ',
-        'price': 'Գին',
-        'address': '📍 Հասցե',
-        'call': '📞 Զանգել',
-        'write': '💬 Գրել',
-        'add_to_cart': '🛒 Զամբյուղ',
-        'username': 'Օգտանուն (Username)',
-        'email': 'Gmail հասցե',
-        'phone': 'Հեռախոսահամար',
-        'password': 'Գաղտնաբառ',
-        'product_name': 'Անվանում',
-        'product_price': 'Գին (AMD)',
-        'image_url': 'Նկարի հղում (URL)',
-        'where_to_pickup': 'Որտեղի՞ց վերցնել ապրանքը (Հասցե)',
-        'submit_add': 'Ավելացնել',
-        'my_messages': 'Իմ նամակագրությունները',
-        'no_messages': 'Դեռ ոչ մի նամակ չունեք:',
-        'send': 'Ուղարկել',
-        'write_msg_placeholder': 'Գրեք նամակ...',
-        'total': 'Ընդհանուր',
-        'empty_cart': 'Զամբյուղը դատարկ է:',
-        'user_exists': 'Այս օգտանունը արդեն զբաղված է:',
-        'invalid_login': 'Սխալ օգտանուն կամ գաղտնաբառ:',
-        'make_vip': '⭐ Դարձնել VIP (1,000 ֏)',
-        'get_pro': '📝 Դիմել PRO-ի համար',
-        'pro_active': '👑 PRO Օգտատեր',
-        'admin_badge': '🛡️ ԱԴՄԻՆ',
-        'delete_product': '🗑️ Հեռացնել (Ադմին)',
-        'vip_tag': '🔥 TOP / VIP',
-        'service_fee': 'Կայքի միջնորդավճար (5%)',
-        'final_total': 'Վերջնական գումար',
-        'limit_reached': 'Դուք արդեն ավելացրել եք 3 ապրանք: Ավելին ավելացնելու համար դիմեք Ադմինին PRO ստանալու համար:',
-        'buy_pro_now': 'Դիմել Ադմինին PRO-ի համար',
-        'welcome_title': 'Բարի գալուստ One-Shop',
-        'welcome_sub': 'Գտեք լավագույն ապրանքները լավագույն գներով'
-    },
-    'ru': {
-        'login': 'Войти',
-        'register': 'Регистрация',
-        'logout': 'Выйти',
-        'add_product': '+ Товар',
-        'messages': '💬 Сообщения',
-        'cart': '🛒 Корзина',
-        'price': 'Цена',
-        'address': '📍 Адрес',
-        'call': '📞 Позвонить',
-        'write': '💬 Написать',
-        'add_to_cart': '🛒 В корзину',
-        'username': 'Имя пользователя',
-        'email': 'Gmail адрес',
-        'phone': 'Номер телефона',
-        'password': 'Пароль',
-        'product_name': 'Название товара',
-        'product_price': 'Цена (AMD)',
-        'image_url': 'Ссылка на изображение (URL)',
-        'where_to_pickup': 'Откуда забрать товар (Адрес)',
-        'submit_add': 'Добавить',
-        'my_messages': 'Мои сообщения',
-        'no_messages': 'У вас пока нет сообщений.',
-        'send': 'Отправить',
-        'write_msg_placeholder': 'Напишите сообщение...',
-        'total': 'Итого',
-        'empty_cart': 'Корзина пуста.',
-        'user_exists': 'Это имя пользователя уже занято.',
-        'invalid_login': 'Неверное имя пользователя или пароль.',
-        'make_vip': '⭐ Сделать VIP (1,000 ֏)',
-        'get_pro': '📝 Заявка на PRO',
-        'pro_active': '👑 PRO Пользователь',
-        'admin_badge': '🛡️ АДМИН',
-        'delete_product': '🗑️ Удалить (Админ)',
-        'vip_tag': '🔥 TOP / VIP',
-        'service_fee': 'Комиссия сайта (5%)',
-        'final_total': 'Итоговая сумма',
-        'limit_reached': 'Вы уже добавили 3 товара. Чтобы добавлять больше, обратитесь к Админу за PRO.',
-        'buy_pro_now': 'Написать Админу',
-        'welcome_title': 'Добро пожаловать в One-Shop',
-        'welcome_sub': 'Найдите лучшие товары по лучшим ценам'
-    },
-    'en': {
-        'login': 'Login',
-        'register': 'Register',
-        'logout': 'Logout',
-        'add_product': '+ Add Product',
-        'messages': '💬 Messages',
-        'cart': '🛒 Cart',
-        'price': 'Price',
-        'address': '📍 Address',
-        'call': '📞 Call',
-        'write': '💬 Chat',
-        'add_to_cart': '🛒 Add to Cart',
-        'username': 'Username',
-        'email': 'Gmail Address',
-        'phone': 'Phone Number',
-        'password': 'Password',
-        'product_name': 'Product Name',
-        'product_price': 'Price (AMD)',
-        'image_url': 'Image URL',
-        'where_to_pickup': 'Pickup Location (Address)',
-        'submit_add': 'Add Product',
-        'my_messages': 'My Messages',
-        'no_messages': 'You have no messages yet.',
-        'send': 'Send',
-        'write_msg_placeholder': 'Write a message...',
-        'total': 'Total',
-        'empty_cart': 'Cart is empty.',
-        'user_exists': 'Username already exists.',
-        'invalid_login': 'Invalid username or password.',
-        'make_vip': '⭐ Promote to VIP (1,000 ֏)',
-        'get_pro': '📝 Apply for PRO',
-        'pro_active': '👑 PRO User',
-        'admin_badge': '🛡️ ADMIN',
-        'delete_product': '🗑️ Delete (Admin)',
-        'vip_tag': '🔥 TOP / VIP',
-        'service_fee': 'Platform Commission (5%)',
-        'final_total': 'Final Amount',
-        'limit_reached': 'You have reached the 3-product limit. Contact Admin to get PRO.',
-        'buy_pro_now': 'Contact Admin',
-        'welcome_title': 'Welcome to One-Shop',
-        'welcome_sub': 'Find the best deals at the best prices'
-    }
-}
-
-def get_current_lang():
-    return session.get('lang', 'hy')
-
-def t(key):
-    lang = get_current_lang()
-    return TRANSLATIONS.get(lang, TRANSLATIONS['hy']).get(key, key)
-
-def format_price(price_in_amd):
-    try:
-        price_in_amd = float(price_in_amd)
-    except (ValueError, TypeError):
-        return "0 ֏"
-
-    lang = get_current_lang()
-    config = CURRENCY_CONFIG.get(lang, CURRENCY_CONFIG['hy'])
-    rates = get_exchange_rates()
-    rate = rates.get(config['rate_key'], 1.0)
-    converted_price = price_in_amd * rate
-    
-    if config['code'] == 'AMD':
-        return f"{int(converted_price):,} {config['symbol']}"
-    elif config['code'] == 'RUB':
-        return f"{converted_price:.2f} {config['symbol']}"
-    else:
-        return f"{config['symbol']}{converted_price:.2f}"
-
-app.jinja_env.filters['format_price'] = format_price
-app.jinja_env.globals.update(t=t)
-
-# --- HTML Ձևանմուշ ---
-HTML_LAYOUT = """
+# --- HTML TEMPLATE (DESIGN + NEW FEATURES) ---
+BASE_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="{{ current_lang }}">
+<html lang="hy">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>One-Shop</title>
+    <title>One-Shop - Հայկական Օնլայն Շուկա</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            padding: 0; 
-            background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('https://img.freepik.com/free-photo/showing-cart-trolley-shopping-online-sign-graphic_53876-133968.jpg'); 
-            background-size: cover; 
-            background-position: center; 
-            background-repeat: no-repeat; 
-            background-attachment: fixed; 
-            min-height: 100vh;
-        }
-        header { background: #1f2937; color: white; padding: 12px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-        header a { color: white; text-decoration: none; font-weight: bold; margin-left: 12px; }
-        
-        .logo-container { display: flex; align-items: center; text-decoration: none; }
-        .logo-img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #f59e0b; margin-right: 10px; }
-        .logo-text { font-size: 20px; color: white; font-weight: bold; }
-
-        .lang-picker a { color: #f3f4f6; margin-left: 5px; text-decoration: none; }
-        .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
-        .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
-        
-        .hero-banner {
-            width: 100%;
-            height: 220px;
-            background-image: url('https://cdn.discordapp.com/attachments/1324696987404075080/1552711269033844736/One_Shop_logo1.png?ex=6ab69a8e&is=6ab5490e&hm=1a924d545c8effbb91bde2371ab0ab52bb9b5e13991e3783ee541f5c2faf9100&');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            border-radius: 12px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            text-align: center;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-
-        .hero-banner h2 { font-size: 32px; margin-bottom: 8px; text-shadow: 2px 2px 4px rgba(0,0,0,0.9); }
-        .hero-banner p { font-size: 16px; text-shadow: 1px 1px 3px rgba(0,0,0,0.9); }
-
-        .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
-        .card.vip { border: 2px solid #f59e0b; background: #fffbeb; }
-        .vip-badge { position: absolute; top: 10px; right: 10px; background: #f59e0b; color: white; padding: 3px 8px; font-size: 11px; border-radius: 4px; font-weight: bold; }
-        .card img { width: 100%; height: 160px; object-fit: cover; border-radius: 5px; }
-        .btn { display: inline-block; background: #2563eb; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; margin-top: 5px; font-size: 13px; }
-        .btn:hover { background: #1d4ed8; }
-        .btn-success { background: #16a34a; }
-        .btn-warning { background: #d97706; }
-        .btn-info { background: #0284c7; }
-        .btn-danger { background: #dc2626; }
-        .btn-danger:hover { background: #b91c1c; }
-        .action-btns { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 10px; }
-        form { background: white; padding: 25px; border-radius: 8px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .form-group { margin-bottom: 15px; text-align: left; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-        .form-group input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        .chat-box { background: white; padding: 15px; border-radius: 8px; height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 15px; }
-        .message { margin-bottom: 10px; padding: 8px; border-radius: 5px; }
-        .my-msg { background: #dcf8c6; text-align: right; }
-        .other-msg { background: #e2e8f0; text-align: left; }
-        .alert-box { background: #fee2e2; border: 1px solid #ef4444; color: #991b1b; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; }
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar { background-color: #1a1a1a; }
+        .navbar-brand { color: #ffc107 !important; font-weight: bold; font-size: 1.5rem; }
+        .footer { background-color: #1a1a1a; color: #aaa; padding: 20px 0; margin-top: 40px; text-align: center; }
+        .card { border: none; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+        .vip-badge { background: linear-gradient(45deg, #f12711, #f5af19); color: white; font-weight: bold; }
+        .pro-badge { background: linear-gradient(45deg, #11998e, #38ef7d); color: white; font-weight: bold; }
     </style>
 </head>
 <body>
-    <header>
-        <a href="/" class="logo-container">
-            <img src="https://cdn.discordapp.com/attachments/1324696987404075080/1552693490390138981/One_Shop_circular_logo.png?ex=6ab689ff&is=6ab5387f&hm=a6694c6fb85adea9a3901345afaa1ccb563155acc292eaf5e05077d9d7e40146&" alt="One-Shop Logo" class="logo-img">
-            <span class="logo-text">One-Shop</span>
-        </a>
-        <nav>
-            <span class="lang-picker">
-                <a href="/change_lang/hy" class="{{ 'active' if current_lang=='hy' else '' }}">AM (֏)</a> | 
-                <a href="/change_lang/ru" class="{{ 'active' if current_lang=='ru' else '' }}">RU (₽)</a> | 
-                <a href="/change_lang/en" class="{{ 'active' if current_lang=='en' else '' }}">EN ($)</a>
-            </span>
-            {% if current_user.is_authenticated %}
-                <span>
-                    👤 {{ current_user.username }} 
-                    {% if current_user.is_admin %}<span style="color:#ef4444; font-weight:bold;">({{ t('admin_badge') }})</span>{% endif %}
-                    {% if current_user.is_pro %}<span style="color:#f59e0b;">(PRO)</span>{% endif %}
-                </span>
-                {% if not current_user.is_pro and not current_user.is_admin %}
-                    <a href="/request_pro" class="btn btn-warning" style="color:white;">{{ t('get_pro') }}</a>
+    <nav class="navbar navbar-expand-lg navbar-dark px-3">
+        <a class="navbar-brand" href="/"><i class="fa-solid fa-store me-2"></i>One-Shop</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+            <ul class="navbar-nav align-items-center">
+                <li class="nav-item"><a class="nav-link" href="/"><i class="fa-solid fa-house me-1"></i>Գլխավոր</a></li>
+                {% if current_user.is_authenticated %}
+                    <li class="nav-item"><a class="nav-link" href="/add"><i class="fa-solid fa-plus me-1"></i>Ավելացնել</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/favorites"><i class="fa-solid fa-heart text-danger me-1"></i>Հավանածներ</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/messages"><i class="fa-solid fa-envelope me-1"></i>Նամակներ</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/profile"><i class="fa-solid fa-user me-1"></i>Պրոֆիլ</a></li>
+                    {% if current_user.is_admin %}
+                        <li class="nav-item"><a class="nav-link text-warning" href="/admin"><i class="fa-solid fa-shield me-1"></i>Ադմին</a></li>
+                    {% endif %}
+                    <li class="nav-item"><a class="btn btn-outline-light btn-sm ms-2" href="/logout">Ելք</a></li>
+                {% else %}
+                    <li class="nav-item"><a class="nav-link" href="/login">Մուտք</a></li>
+                    <li class="nav-item"><a class="btn btn-warning btn-sm ms-2 text-dark fw-bold" href="/register">Գրանցվել</a></li>
                 {% endif %}
-                <a href="/add_product">{{ t('add_product') }}</a>
-                <a href="/messages">{{ t('messages') }}</a>
-                <a href="/logout">{{ t('logout') }}</a>
-            {% else %}
-                <a href="/login">{{ t('login') }}</a>
-                <a href="/register">{{ t('register') }}</a>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
             {% endif %}
-            <a href="/cart">{{ t('cart') }} ({{ cart_count }})</a>
-        </nav>
-    </header>
-    <div class="container">
+        {% endwith %}
+
         {% block content %}{% endblock %}
     </div>
+
+    <div class="footer">
+        <p>&copy; 2026 One-Shop - Բոլոր իրավունքները պաշտպանված են։ Մասիս, Հայաստան 🇦🇲</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 """
 
-# --- Route-եր ---
-@app.route('/change_lang/<lang_code>')
-def change_lang(lang_code):
-    if lang_code in CURRENCY_CONFIG:
-        session['lang'] = lang_code
-    return redirect(request.referrer or url_for('index'))
+# --- ROUTES ---
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    products = Product.query.order_by(Product.is_vip.desc(), Product.id.desc()).all()
-    cart = session.get('cart', {})
-    cart_count = sum(cart.values())
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <div class="hero-banner">
-            <h2>{{ t('welcome_title') }}</h2>
-            <p>{{ t('welcome_sub') }}</p>
-        </div>
+  search_query = request.args.get("q", "")
+  category_filter = request.args.get("category", "")
 
-        <div class="products-grid">
+  query = Product.query
+  if search_query:
+    query = query.filter(
+        Product.title.ilike(f"%{search_query}%")
+        | Product.description.ilike(f"%{search_query}%")
+    )
+  if category_filter and category_filter != "Բոլորը":
+    query = query.filter(Product.category == category_filter)
+
+  # VIP-ները միշտ առաջինն են
+  products = query.order_by(Product.is_vip.desc(), Product.id.desc()).all()
+  categories = [
+      "Բոլորը",
+      "Էլեկտրոնիկա",
+      "Հագուստ",
+      "Տուն և Ագարակ",
+      "Խաղեր",
+      "Այլ",
+  ]
+
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="p-4 mb-4 bg-dark text-white rounded shadow-sm text-center">
+        <h1 class="display-5 fw-bold">Բարի գալուստ One-Shop 🛒</h1>
+        <p class="lead">Գտեք կամ վաճառեք ցանկացած ապրանք արագ և հարմարավետ:</p>
+        
+        <!-- Որոնման և ֆիլտրի ձևանմուշ -->
+        <form method="GET" action="/" class="row g-2 justify-content-center mt-3">
+            <div class="col-md-5">
+                <input type="text" name="q" class="form-control" placeholder="Որոնել ապրանք..." value="{{ search_query }}">
+            </div>
+            <div class="col-md-3">
+                <select name="category" class="form-select">
+                    {% for cat in categories %}
+                        <option value="{{ cat }}" {{ 'selected' if category_filter == cat else '' }}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-warning w-100 fw-bold"><i class="fa-solid fa-search me-1"></i>Որոնել</button>
+            </div>
+        </form>
+    </div>
+
+    <h3 class="mb-3">Ակտիվ Ապրանքներ</h3>
+    <div class="row">
+        {% if products %}
             {% for p in products %}
-            <div class="card {{ 'vip' if p.is_vip else '' }}">
-                {% if p.is_vip %}
-                    <span class="vip-badge">{{ t('vip_tag') }}</span>
-                {% endif %}
-                <img src="{{ p.image_url }}" alt="{{ p.name }}">
-                <h3>{{ p.name }}</h3>
-                <p><strong>{{ t('price') }}:</strong> {{ p.price | format_price }}</p>
-                <p>{{ t('address') }}: {{ p.address }}</p>
-                <div class="action-btns">
-                    {% if p.seller_phone %}
-                        <a href="tel:{{ p.seller_phone }}" class="btn btn-success">{{ t('call') }}</a>
-                    {% endif %}
-                    {% if current_user.is_authenticated and p.user_id and p.user_id != current_user.id %}
-                        <a href="/chat/{{ p.user_id }}?product_id={{ p.id }}" class="btn btn-info">{{ t('write') }}</a>
-                    {% endif %}
-                    {% if current_user.is_authenticated and p.user_id == current_user.id and not p.is_vip %}
-                        <a href="/make_vip/{{ p.id }}" class="btn btn-warning">{{ t('make_vip') }}</a>
-                    {% endif %}
-                    
-                    {% if current_user.is_authenticated and (current_user.is_admin or p.user_id == current_user.id) %}
-                        <a href="/delete_product/{{ p.id }}" class="btn btn-danger">{{ t('delete_product') }}</a>
-                    {% endif %}
-
-                    <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t('add_to_cart') }}</a>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 position-relative">
+                        {% if p.is_vip %}
+                            <span class="position-absolute top-0 start-0 badge vip-badge m-2 px-2 py-1">VIP</span>
+                        {% endif %}
+                        {% if p.image_url %}
+                            <img src="{{ p.image_url }}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="Product">
+                        {% else %}
+                            <div class="bg-secondary text-white d-flex align-items-center justify-content-center" style="height: 200px;">
+                                <i class="fa-solid fa-image fa-2x"></i>
+                            </div>
+                        {% endif %}
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title fw-bold">{{ p.title }}</h5>
+                            <p class="card-text text-muted flex-grow-1">{{ p.description[:80] }}...</p>
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <span class="text-success fw-bold fs-5">{{ p.price }} ֏</span>
+                                <div>
+                                    {% if current_user.is_authenticated %}
+                                        <a href="/favorite/{{ p.id }}" class="btn btn-outline-danger btn-sm me-1" title="Հավանել">
+                                            <i class="fa-solid fa-heart"></i>
+                                        </a>
+                                    {% endif %}
+                                    <a href="/product/{{ p.id }}" class="btn btn-dark btn-sm">Դիտել</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
             {% endfor %}
+        {% else %}
+            <div class="col-12 text-center py-5">
+                <h5 class="text-muted">Ապրանքներ չեն գտնվել...</h5>
+            </div>
+        {% endif %}
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(
+      html, products=products, categories=categories, search_query=search_query
+  )
+
+
+@app.route("/product/<int:id>")
+def product_detail(id):
+  product = Product.query.get_or_404(id)
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row bg-white p-4 rounded shadow-sm">
+        <div class="col-md-6">
+            {% if product.image_url %}
+                <img src="{{ product.image_url }}" class="img-fluid rounded" alt="Product">
+            {% else %}
+                <div class="bg-secondary text-white d-flex align-items-center justify-content-center rounded" style="height: 350px;">
+                    <i class="fa-solid fa-image fa-3x"></i>
+                </div>
+            {% endif %}
         </div>
-        """),
-        products=products, cart_count=cart_count, current_lang=get_current_lang()
-    )
-
-@app.route('/delete_product/<int:product_id>')
-@login_required
-def delete_product(product_id):
-    product = Product.query.get_or_404(product_id)
-    if current_user.is_admin or product.user_id == current_user.id:
-        db.session.delete(product)
-        db.session.commit()
-    return redirect(url_for('index'))
-
-@app.route('/make_vip/<int:product_id>')
-@login_required
-def make_vip(product_id):
-    product = Product.query.get_or_404(product_id)
-    if product.user_id == current_user.id:
-        product.is_vip = True
-        db.session.commit()
-    return redirect(url_for('index'))
-
-@app.route('/request_pro')
-@login_required
-def request_pro():
-    # Գտնում ենք ադմինին (haykazaryan3@gmail.com)
-    admin_user = User.query.filter_by(email='haykazaryan3@gmail.com').first()
-    if admin_user and admin_user.id != current_user.id:
-        # Ավտոմատ ուղարկում ենք նամակ ադմինին օգտատիրոջ խնդրանքով
-        auto_msg = Message(
-            sender_id=current_user.id,
-            receiver_id=admin_user.id,
-            content="Բարև ձեզ, ես ցանկանում եմ ձեռք բերել PRO կարգավիճակ։ Խնդրում եմ կապվել ինձ հետ վճարման համար։"
-        )
-        db.session.add(auto_msg)
-        db.session.commit()
-        return redirect(url_for('chat', receiver_id=admin_user.id))
-    return redirect(url_for('index'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email'].strip().lower()
-        phone = request.form['phone']
-        password = request.form['password']
-
-        if User.query.filter_by(username=username).first():
-            return t('user_exists')
-
-        is_admin_user = (email == 'haykazaryan3@gmail.com')
-
-        user = User(
-            username=username, 
-            email=email, 
-            phone=phone, 
-            is_admin=is_admin_user, 
-            is_pro=is_admin_user
-        )
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        login_user(user)
-        return redirect(url_for('index'))
-
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <form method="POST">
-            <h2>{{ t('register') }}</h2>
-            <div class="form-group">
-                <label>{{ t('username') }}</label>
-                <input type="text" name="username" required>
+        <div class="col-md-6 d-flex flex-column justify-content-between">
+            <div>
+                <h2>{{ product.title }}</h2>
+                <span class="badge bg-secondary mb-2">{{ product.category }}</span>
+                <h3 class="text-success fw-bold my-3">{{ product.price }} ֏</h3>
+                <p class="text-muted"><strong>Նկարագրություն:</strong><br>{{ product.description }}</p>
+                <hr>
+                <p><strong>Վաճառող:</strong> {{ product.seller.username }}</p>
+                <p class="text-muted small">Տեղադրված է՝ {{ product.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
             </div>
-            <div class="form-group">
-                <label>{{ t('email') }}</label>
-                <input type="email" name="email" placeholder="haykazaryan3@gmail.com" required>
-            </div>
-            <div class="form-group">
-                <label>{{ t('phone') }}</label>
-                <input type="text" name="phone" placeholder="+374 99 123456" required>
-            </div>
-            <div class="form-group">
-                <label>{{ t('password') }}</label>
-                <input type="password" name="password" required>
-            </div>
-            <button type="submit" class="btn">{{ t('register') }}</button>
-        </form>
-        """),
-        cart_count=0, current_lang=get_current_lang()
-    )
+            
+            {% if current_user.is_authenticated and current_user.id != product.user_id %}
+                <div class="mt-3">
+                    <a href="/chat/{{ product.user_id }}/{{ product.id }}" class="btn btn-warning w-100 fw-bold text-dark">
+                        <i class="fa-solid fa-comment-dots me-2"></i>Գրել վաճառողին
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="mt-3">
+        <a href="/" class="btn btn-outline-secondary"><i class="fa-solid fa-arrow-left me-1"></i>Հետ դեպի գլխավոր</a>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html, product=product)
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username).first()
 
-        if user and user.check_password(password):
-            if user.email and user.email.lower() == 'haykazaryan3@gmail.com':
-                user.is_admin = True
-                user.is_pro = True
-                db.session.commit()
-
-            login_user(user)
-            return redirect(url_for('index'))
-        return t('invalid_login')
-
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <form method="POST">
-            <h2>{{ t('login') }}</h2>
-            <div class="form-group">
-                <label>{{ t('username') }}</label>
-                <input type="text" name="username" required>
-            </div>
-            <div class="form-group">
-                <label>{{ t('password') }}</label>
-                <input type="password" name="password" required>
-            </div>
-            <button type="submit" class="btn">{{ t('login') }}</button>
-        </form>
-        """),
-        cart_count=0, current_lang=get_current_lang()
-    )
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-@app.route('/add_product', methods=['GET', 'POST'])
+@app.route("/add", methods=["GET", "POST"])
 @login_required
 def add_product():
-    user_products_count = Product.query.filter_by(user_id=current_user.id).count()
-    limit_reached = (not current_user.is_pro and not current_user.is_admin) and (user_products_count >= 3)
+  if request.method == "POST":
+    title = request.form.get("title")
+    description = request.form.get("description")
+    price = float(request.form.get("price"))
+    category = request.form.get("category")
+    image_url = request.form.get("image_url")
 
-    if request.method == 'POST':
-        if limit_reached:
-            return redirect(url_for('add_product'))
-
-        name = request.form['name']
-        price = float(request.form['price'])
-        image_url = request.form['image_url']
-        address = request.form['address']
-        seller_phone = current_user.phone
-
-        product = Product(
-            name=name, price=price, image_url=image_url,
-            address=address, seller_phone=seller_phone, user_id=current_user.id
+    # Ստուգում ենք PRO սահմանափակումը (եթե PRO չէ և ադմին չէ, կարող է դնել մինչև 3 ապրանք)
+    if not current_user.is_admin and not current_user.is_pro:
+      user_count = Product.query.filter_by(user_id=current_user.id).count()
+      if user_count >= 3:
+        flash(
+            "Անվճար օգտատերերը կարող են տեղադրել առավելագույնը 3 ապրանք։"
+            " Ավելացնելու համար անցեք PRO կարգավիճակի!",
+            "danger",
         )
-        db.session.add(product)
-        db.session.commit()
-        return redirect(url_for('index'))
+        return redirect("/profile")
 
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        {% if limit_reached %}
-            <div class="alert-box">
-                <p><strong>⚠️ {{ t('limit_reached') }}</strong></p>
-                <a href="/request_pro" class="btn btn-warning" style="color:white; margin-top:10px;">{{ t('buy_pro_now') }}</a>
-            </div>
-        {% else %}
-            <form method="POST">
-                <h2>{{ t('add_product') }}</h2>
-                <div class="form-group">
-                    <label>{{ t('product_name') }}</label>
-                    <input type="text" name="name" required>
-                </div>
-                <div class="form-group">
-                    <label>{{ t('product_price') }}</label>
-                    <input type="number" step="1" name="price" required>
-                </div>
-                <div class="form-group">
-                    <label>{{ t('image_url') }}</label>
-                    <input type="url" name="image_url" required>
-                </div>
-                <div class="form-group">
-                    <label>{{ t('where_to_pickup') }}</label>
-                    <input type="text" name="address" required>
-                </div>
-                <button type="submit" class="btn">{{ t('submit_add') }}</button>
-            </form>
-        {% endif %}
-        """),
-        limit_reached=limit_reached, cart_count=0, current_lang=get_current_lang()
+    new_prod = Product(
+        title=title,
+        description=description,
+        price=price,
+        category=category,
+        image_url=image_url,
+        user_id=current_user.id,
     )
+    db.session.add(new_prod)
+    db.session.commit()
+    flash("Ապրանքը հաջողությամբ ավելացվեց!", "success")
+    return redirect("/")
 
-@app.route('/chat/<int:receiver_id>', methods=['GET', 'POST'])
+  categories = ["Էլեկտրոնիկա", "Հագուստ", "Տուն և Ագարակ", "Խաղեր", "Այլ"]
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row justify-content-center">
+        <div class="col-md-6 bg-white p-4 rounded shadow-sm">
+            <h3 class="mb-4 text-center">Ավելացնել նոր ապրանք</h3>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Ապրանքի վերնագիր</label>
+                    <input type="text" name="title" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Կատեգորիա</label>
+                    <select name="category" class="form-select">
+                        {% for cat in categories %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Գինը (֏)</label>
+                    <input type="number" step="any" name="price" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Նկարի հղում (URL)</label>
+                    <input type="text" name="image_url" class="form-control" placeholder="https://example.com/image.jpg">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Նկարագրություն</label>
+                    <textarea name="description" class="form-control" rows="4" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-warning w-100 fw-bold">Տեղադրել ապրանքը</button>
+            </form>
+        </div>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html, categories=categories)
+
+
+@app.route("/favorite/<int:product_id>")
 @login_required
-def chat(receiver_id):
-    receiver = User.query.get_or_404(receiver_id)
-    product_id = request.args.get('product_id')
+def toggle_favorite(product_id):
+  existing = Favorite.query.filter_by(
+      user_id=current_user.id, product_id=product_id
+  ).first()
+  if existing:
+    db.session.delete(existing)
+    db.session.commit()
+    flash("Ապրանքը հեռացվեց հավանածներից։", "success")
+  else:
+    fav = Favorite(user_id=current_user.id, product_id=product_id)
+    db.session.add(fav)
+    db.session.commit()
+    flash("Ապրանքն ավելացվեց հավանածներին!", "success")
+  return redirect(request.referrer or "/")
 
-    if request.method == 'POST':
-        content = request.form['content']
-        if content.strip():
-            msg = Message(
-                sender_id=current_user.id,
-                receiver_id=receiver_id,
-                product_id=product_id,
-                content=content
-            )
-            db.session.add(msg)
-            db.session.commit()
-            return redirect(url_for('chat', receiver_id=receiver_id, product_id=product_id))
 
-    messages = Message.query.filter(
-        ((Message.sender_id == current_user.id) & (Message.receiver_id == receiver_id)) |
-        ((Message.sender_id == receiver_id) & (Message.receiver_id == current_user.id))
-    ).order_by(Message.timestamp.asc()).all()
-
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>💬 {{ receiver.username }}</h2>
-        <p>📱 {{ t('phone') }}: <a href="tel:{{ receiver.phone }}">{{ receiver.phone }}</a></p>
-        <div class="chat-box">
-            {% for msg in messages %}
-                <div class="message {{ 'my-msg' if msg.sender_id == current_user.id else 'other-msg' }}">
-                    <strong>{{ msg.sender.username }}:</strong> {{ msg.content }}
+@app.route("/favorites")
+@login_required
+def favorites():
+  favs = Favorite.query.filter_by(user_id=current_user.id).all()
+  products = [Product.query.get(f.product_id) for f in favs]
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <h3 class="mb-3"><i class="fa-solid fa-heart text-danger me-2"></i>Իմ Հավանած Ապրանքները</h3>
+    <div class="row">
+        {% if products %}
+            {% for p in products %}
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        {% if p.image_url %}
+                            <img src="{{ p.image_url }}" class="card-img-top" style="height: 200px; object-fit: cover;">
+                        {% endif %}
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title fw-bold">{{ p.title }}</h5>
+                            <p class="card-text text-success fw-bold">{{ p.price }} ֏</p>
+                            <a href="/product/{{ p.id }}" class="btn btn-dark btn-sm mt-auto">Դիտել</a>
+                        </div>
+                    </div>
                 </div>
             {% endfor %}
-        </div>
-        <form method="POST" style="max-width: 100%;">
-            <div class="form-group">
-                <input type="text" name="content" placeholder="{{ t('write_msg_placeholder') }}" required>
+        {% else %}
+            <div class="col-12 text-center py-5">
+                <h5 class="text-muted">Դուք դեռ չունեք հավանած ապրանքներ։</h5>
             </div>
-            <button type="submit" class="btn btn-success">{{ t('send') }}</button>
-        </form>
-        """),
-        messages=messages, receiver=receiver, cart_count=0, current_lang=get_current_lang()
-    )
+        {% endif %}
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html, products=products)
 
-@app.route('/messages')
+
+@app.route("/chat/<int:receiver_id>/<int:product_id>")
+@login_required
+def start_chat(receiver_id, product_id):
+  # Ուղղորդում է դեպի նամակների էջ կոնկրետ օգտատիրոջ հետ
+  return redirect(f"/messages?with={receiver_id}&product={product_id}")
+
+
+@app.route("/messages", methods=["GET", "POST"])
 @login_required
 def messages():
-    sent = Message.query.filter_by(sender_id=current_user.id).all()
-    received = Message.query.filter_by(receiver_id=current_user.id).all()
-    user_ids = set([m.receiver_id for m in sent] + [m.sender_id for m in received])
-    users = User.query.filter(User.id.in_(user_ids)).all()
+  other_user_id = request.args.get("with", type=int)
+  product_id = request.args.get("product", type=int)
 
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>{{ t('my_messages') }}</h2>
-        {% if users %}
-            <ul>
-            {% for u in users %}
-                <li><a href="/chat/{{ u.id }}" class="btn btn-info" style="margin-bottom: 10px;">💬 {{ u.username }} ({{ u.phone }})</a></li>
-            {% endfor %}
-            </ul>
-        {% else %}
-            <p>{{ t('no_messages') }}</p>
-        {% endif %}
-        """),
-        users=users, cart_count=0, current_lang=get_current_lang()
+  if request.method == "POST":
+    receiver_id = request.form.get("receiver_id", type=int)
+    content = request.form.get("content")
+    p_id = request.form.get("product_id", type=int)
+    if content:
+      msg = Message(
+          sender_id=current_user.id,
+          receiver_id=receiver_id,
+          product_id=p_id if p_id else None,
+          content=content,
+      )
+      db.session.add(msg)
+      db.session.commit()
+    return redirect(f"/messages?with={receiver_id}")
+
+  # Բոլոր այն օգտատերերը, որոնց հետ կան նամակներ կամ որոշակի զրույց
+  active_with = None
+  chat_messages = []
+  if other_user_id:
+    active_with = User.query.get_or_404(other_user_id)
+    chat_messages = Message.query.filter(
+        ((Message.sender_id == current_user.id) & (Message.receiver_id == other_user_id))
+        | ((Message.sender_id == other_user_id) & (Message.receiver_id == current_user.id))
+    ).order_by(Message.timestamp.asc()).all()
+
+  # Գտնենք բոլոր զրուցակիցներին
+  sent_to = [m.receiver_id for m in Message.query.filter_by(sender_id=current_user.id).all()]
+  received_from = [m.sender_id for m in Message.query.filter_by(receiver_id=current_user.id).all()]
+  contact_ids = list(set(sent_to + received_from))
+  contacts = User.query.filter(User.id.in_(contact_ids)).all() if contact_ids else []
+
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row bg-white rounded shadow-sm p-3" style="min-height: 500px;">
+        <div class="col-md-4 border-end">
+            <h5>Զրույցներ</h5>
+            <div class="list-group mt-3">
+                {% if contacts %}
+                    {% for c in contacts %}
+                        <a href="/messages?with={{ c.id }}" class="list-group-item list-group-item-action {{ 'active' if active_with and active_with.id == c.id else '' }}">
+                            <i class="fa-solid fa-user-circle me-2"></i>{{ c.username }}
+                        </a>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted small">Դեռևս նամակներ չկան։ Կարող եք գրել վաճառողներին ապրանքի էջից։</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-8 d-flex flex-column justify-content-between">
+            {% if active_with %}
+                <div>
+                    <h5 class="border-bottom pb-2">Զրույց {{ active_with.username }}-ի հետ</h5>
+                    <div class="p-3 mb-3" style="height: 350px; overflow-y: auto; background: #f9f9f9; border-radius: 8px;">
+                        {% for msg in chat_messages %}
+                            <div class="mb-2 text-{{ 'end' if msg.sender_id == current_user.id else 'start' }}">
+                                <div class="d-inline-block p-2 rounded {{ 'bg-warning text-dark' if msg.sender_id == current_user.id else 'bg-white border' }}" style="max-width: 75%;">
+                                    <small class="d-block text-muted" style="font-size: 10px;">{{ msg.timestamp.strftime('%H:%M') }}</small>
+                                    {{ msg.content }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="receiver_id" value="{{ active_with.id }}">
+                    <div class="input-group">
+                        <input type="text" name="content" class="form-control" placeholder="Գրեք հաղորդագրություն..." required>
+                        <button type="submit" class="btn btn-warning fw-bold">Ուղարկել</button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="text-center my-auto">
+                    <h5 class="text-muted">Ընտրեք զրույց ձախ կողմից կամ գրեք ապրանքի վաճառողին։</h5>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(
+      html, contacts=contacts, active_with=active_with, chat_messages=chat_messages
+  )
+
+
+@app.route("/profile")
+@login_required
+def profile():
+  user_products = Product.query.filter_by(user_id=current_user.id).all()
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row bg-white p-4 rounded shadow-sm">
+        <div class="col-md-4 text-center border-end">
+            <i class="fa-solid fa-user-circle fa-5x text-secondary mb-3"></i>
+            <h4>{{ current_user.username }}</h4>
+            <p class="text-muted">{{ current_user.email }}</p>
+            
+            {% if current_user.is_admin %}
+                <span class="badge bg-danger mb-2">Ադմինիստրատոր</span>
+            {% elif current_user.is_pro %}
+                <span class="badge pro-badge mb-2">PRO Օգտատեր</span>
+            {% else %}
+                <span class="badge bg-secondary mb-2">Սովորական օգտատեր</span>
+                <div class="card bg-light p-3 mt-3 text-start">
+                    <h6 class="fw-bold text-dark">Ցանկանո՞ւմ եք անսահմանափակ ապրանքներ։</h6>
+                    <p class="small text-muted mb-2">Ձեռք բերեք PRO կարգավիճակ ընդամենը 1000 դրամով։ Գրեք ադմինին՝ haykazaryan3@gmail.com</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="col-md-8">
+            <h4 class="mb-3">Իմ Ապրանքները</h4>
+            <div class="row">
+                {% if user_products %}
+                    {% for p in user_products %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ p.title }}</h5>
+                                    <p class="text-success fw-bold">{{ p.price }} ֏</p>
+                                    <a href="/product/{{ p.id }}" class="btn btn-dark btn-sm">Դիտել</a>
+                                    <a href="/delete/{{ p.id }}" class="btn btn-outline-danger btn-sm">Ջնջել</a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">Դուք դեռ ապրանքներ չեք տեղադրել։</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html, user_products=user_products)
+
+
+@app.route("/delete/<int:id>")
+@login_required
+def delete_product(id):
+  product = Product.query.get_or_404(id)
+  if product.user_id == current_user.id or current_user.is_admin:
+    db.session.delete(product)
+    db.session.commit()
+    flash("Ապրանքը ջնջվեց։", "success")
+  else:
+    flash("Դուք իրավունք չունեք ջնջելու այս ապրանքը։", "danger")
+  return redirect("/profile")
+
+
+@app.route("/admin")
+@login_required
+def admin():
+  if not current_user.is_admin:
+    abort(403)
+  users = User.query.all()
+  products = Product.query.all()
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <h2 class="mb-4 text-danger"><i class="fa-solid fa-shield-halved me-2"></i>Ադմինիստրատորի Վահանակ</h2>
+    
+    <h4 class="mt-4">Օգտատերեր</h4>
+    <div class="table-responsive bg-white p-3 rounded shadow-sm">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Անուն</th>
+                    <th>Email</th>
+                    <th>Կարգավիճակ</th>
+                    <th>Գործողություն</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.id }}</td>
+                    <td>{{ u.username }}</td>
+                    <td>{{ u.email }}</td>
+                    <td>
+                        {% if u.is_admin %} Ադմին
+                        {% elif u.is_pro %} PRO
+                        {% else %} Սովորական
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not u.is_admin %}
+                            <a href="/admin/make-pro/{{ u.id }}" class="btn btn-success btn-sm">PRO դարձնել</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html, users=users, products=products)
+
+
+@app.route("/admin/make-pro/<int:user_id>")
+@login_required
+def make_pro(user_id):
+  if not current_user.is_admin:
+    abort(403)
+  u = User.query.get_or_404(user_id)
+  u.is_pro = True
+  db.session.commit()
+  flash(f"{u.username} օգտատերը հաջողությամբ դարձավ PRO!", "success")
+  return redirect("/admin")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+  if request.method == "POST":
+    email = request.form.get("email")
+    password = request.form.get("password")
+    user = User.query.filter_by(email=email).first()
+    if user and check_password_hash(user.password, password):
+      login_user(user)
+      flash("Բարի գալուստ!", "success")
+      return redirect("/")
+    flash("Սխալ էլ. փոստ կամ գաղտնաբառ։", "danger")
+
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row justify-content-center">
+        <div class="col-md-5 bg-white p-4 rounded shadow-sm">
+            <h3 class="mb-4 text-center">Մուտք</h3>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Էլ. փոստ</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Գաղտնաբառ</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-warning w-100 fw-bold">Մուտք գործել</button>
+            </form>
+        </div>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+  if request.method == "POST":
+    username = request.form.get("username")
+    email = request.form.get("email")
+    password = request.form.get("password")
+
+    if User.query.filter_by(email=email).first():
+      flash("Այս էլ. փոստն արդեն զբաղված է։", "danger")
+      return redirect("/register")
+
+    hashed_pw = generate_password_hash(password, method="pbkdf2:sha256")
+    is_admin_val = True if email == "haykazaryan3@gmail.com" else False
+
+    new_user = User(
+        username=username,
+        email=email,
+        password=hashed_pw,
+        is_admin=is_admin_val,
     )
+    db.session.add(new_user)
+    db.session.commit()
+    flash("Գրանցումը հաջողված է։ Խնդրում ենք մուտք գործել։", "success")
+    return redirect("/login")
 
-@app.route('/add_to_cart/<int:product_id>')
-def add_to_cart(product_id):
-    cart = session.get('cart', {})
-    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
-    session['cart'] = cart
-    return redirect(url_for('index'))
+  html = (
+      BASE_TEMPLATE
+      + """
+    {% block content %}
+    <div class="row justify-content-center">
+        <div class="col-md-5 bg-white p-4 rounded shadow-sm">
+            <h3 class="mb-4 text-center">Գրանցում</h3>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Անուն</label>
+                    <input type="text" name="username" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Էլ. փոստ</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Գաղտնաբառ</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-warning w-100 fw-bold">Գրանցվել</button>
+            </form>
+        </div>
+    </div>
+    {% endblock %}
+    """
+  )
+  return render_template_string(html)
 
-@app.route('/cart')
-def cart():
-    cart = session.get('cart', {})
-    items = []
-    subtotal = 0
-    for p_id, qty in cart.items():
-        product = Product.query.get(int(p_id))
-        if product:
-            for _ in range(qty):
-                items.append(product)
-            subtotal += product.price * qty
 
-    fee = subtotal * 0.05
-    final_total = subtotal + fee
+@app.route("/logout")
+@login_required
+def logout():
+  logout_user()
+  flash("Դուրս եկաք հաշվից։", "success")
+  return redirect("/")
 
-    return render_template_string(
-        HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
-        <h2>{{ t('cart') }}</h2>
-        {% if items %}
-            <ul>
-            {% for item in items %}
-                <li>{{ item.name }} - {{ item.price | format_price }} ({{ t('address') }}: {{ item.address }})</li>
-            {% endfor %}
-            </ul>
-            <hr>
-            <p>{{ t('total') }}: {{ subtotal | format_price }}</p>
-            <p><strong>{{ t('service_fee') }}:</strong> {{ fee | format_price }}</p>
-            <h3>{{ t('final_total') }}: {{ final_total | format_price }}</h3>
-        {% else %}
-            <p>{{ t('empty_cart') }}</p>
-        {% endif %}
-        """),
-        items=items, subtotal=subtotal, fee=fee, final_total=final_total, cart_count=sum(cart.values()), current_lang=get_current_lang()
-    )
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+  with app.app_context():
+    db.create_all()
+  app.run(debug=True)
