@@ -487,19 +487,19 @@ def register():
             <h2>{{ t('register') }}</h2>
             <div class="form-group">
                 <label>{{ t('username') }}</label>
-                <input type="text" name="username" required>
+                <input type="text" name="username" autocomplete="off" required>
             </div>
             <div class="form-group">
                 <label>{{ t('email') }}</label>
-                <input type="email" name="email" placeholder="haykazaryan3@gmail.com" required>
+                <input type="email" name="email" placeholder="example@gmail.com" autocomplete="off" required>
             </div>
             <div class="form-group">
                 <label>{{ t('phone') }}</label>
-                <input type="text" name="phone" placeholder="+374 99 123456" required>
+                <input type="text" name="phone" placeholder="+374 99 123456" autocomplete="off" required>
             </div>
             <div class="form-group">
                 <label>{{ t('password') }}</label>
-                <input type="password" name="password" required>
+                <input type="password" name="password" autocomplete="new-password" required>
             </div>
             <button type="submit" class="btn">{{ t('register') }}</button>
         </form>
