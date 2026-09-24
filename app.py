@@ -62,8 +62,8 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
-    # ԱՎՏՈՄԱՏ ՍՏՈՒԳՈՒՄ. եթե կա այս Gmail-ը, դարձնում ենք ադմին ու պրո
-    admin_user = User.query.filter_by(email='haykazaryan@gmail.com').first()
+    # ԱՎՏՈՄԱՏ ԱԴՄԻՆԻ ՍՏՈՒԳՈՒՄ
+    admin_user = User.query.filter_by(email='haykazaryan3@gmail.com').first()
     if admin_user:
         admin_user.is_admin = True
         admin_user.is_pro = True
@@ -283,10 +283,8 @@ HTML_LAYOUT = """
         
         .hero-banner {
             width: 100%;
-            height: 280px;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://img.freepik.com/free-photo/showing-cart-trolley-shopping-online-sign-graphic_53876-133968.jpg');
-            background-size: cover;
-            background-position: center;
+            height: 260px;
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
             border-radius: 12px;
             display: flex;
             flex-direction: column;
@@ -298,8 +296,8 @@ HTML_LAYOUT = """
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
 
-        .hero-banner h2 { font-size: 36px; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.6); }
-        .hero-banner p { font-size: 18px; text-shadow: 1px 1px 3px rgba(0,0,0,0.6); }
+        .hero-banner h2 { font-size: 36px; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.4); }
+        .hero-banner p { font-size: 18px; text-shadow: 1px 1px 3px rgba(0,0,0,0.4); }
 
         .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
@@ -450,7 +448,7 @@ def register():
         if User.query.filter_by(username=username).first():
             return t('user_exists')
 
-        is_admin_user = (email == 'haykazaryan@gmail.com')
+        is_admin_user = (email == 'haykazaryan3@gmail.com')
 
         user = User(
             username=username, 
@@ -475,7 +473,7 @@ def register():
             </div>
             <div class="form-group">
                 <label>{{ t('email') }}</label>
-                <input type="email" name="email" placeholder="haykazaryan@gmail.com" required>
+                <input type="email" name="email" placeholder="haykazaryan3@gmail.com" required>
             </div>
             <div class="form-group">
                 <label>{{ t('phone') }}</label>
@@ -499,7 +497,7 @@ def login():
         user = User.query.filter_by(username=username).first()
 
         if user and user.check_password(password):
-            if user.email and user.email.lower() == 'haykazaryan@gmail.com':
+            if user.email and user.email.lower() == 'haykazaryan3@gmail.com':
                 user.is_admin = True
                 user.is_pro = True
                 db.session.commit()
