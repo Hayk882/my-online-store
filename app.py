@@ -1,5 +1,7 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
+import requests
+import time
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_for_store'
@@ -12,13 +14,39 @@ db = SQLAlchemy(app)
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    price = db.Column(db.Float, nullable=False)
+    price = db.Column(db.Float, nullable=False)  # Գինը միշտ պահվում է ՀՀ ԴՐԱՄՈՎ (AMD)
     image_url = db.Column(db.String(500), nullable=False)
 
 with app.app_context():
     db.create_all()
 
-# --- Թարգմանություններ ---
+# --- Փոխարժեքների քեշավորում (կայքը չդանդաղեցնելու համար) ---
+RATES_CACHE = {'rates': {'AMD': 1.0, 'USD': 0.0026, 'RUB': 0.24}, 'last_update': 0}
+
+def get_exchange_rates():
+    # Թարմացնել փոխարժեքները 1 ժամը մեկ անգամ
+    now = time.time()
+    if now - RATES_CACHE['last_update'] > 3600:
+        try:
+            # Օգտագործում ենք անվճար API փոխարժեքների համար (Base: USD)
+            res = requests.get('https://open.er-api.com/v6/latest/AMD', timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get('result') == 'success':
+                    RATES_CACHE['rates'] = data['rates']
+                    RATES_CACHE['last_update'] = now
+        except Exception as e:
+            print("Փոխարժեքը չստացվեց թարմացնել, օգտագործվում է պահպանվածը:", e)
+            
+    return RATES_CACHE['rates']
+
+# --- Թարգմանություններ և արժույթի նշաններ ---
+CURRENCY_CONFIG = {
+    'hy': {'code': 'AMD', 'symbol': '֏', 'rate_key': 'AMD'},
+    'ru': {'code': 'RUB', 'symbol': '₽', 'rate_key': 'RUB'},
+    'en': {'code': 'USD', 'symbol': '$', 'rate_key': 'USD'}
+}
+
 TRANSLATIONS = {
     'hy': {
         'title': 'One-Shop',
@@ -68,6 +96,22 @@ def get_t():
     lang = session.get('lang', 'hy')
     return TRANSLATIONS.get(lang, TRANSLATIONS['hy'])
 
+# --- Գնի փոխարկման ֆունկցիա HTML-ի համար ---
+def format_price(price_in_amd):
+    lang = session.get('lang', 'hy')
+    config = CURRENCY_CONFIG.get(lang, CURRENCY_CONFIG['hy'])
+    rates = get_exchange_rates()
+    
+    rate = rates.get(config['rate_key'], 1.0)
+    converted_price = price_in_amd * rate
+    
+    if config['code'] == 'AMD':
+        return f"{int(converted_price):,} {config['symbol']}"
+    else:
+        return f"{config['symbol']}{converted_price:.2f}"
+
+app.jinja_env.filters['format_price'] = format_price
+
 # --- HTML Շաբլոն ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
@@ -105,9 +149,9 @@ HTML_LAYOUT = """
         <h1><a href="/">{{ t['title'] }}</a></h1>
         <nav>
             <span class="lang-picker">
-                <a href="/change_lang/hy" class="{{ 'active' if session.get('lang', 'hy')=='hy' else '' }}">AM</a> | 
-                <a href="/change_lang/ru" class="{{ 'active' if session.get('lang')=='ru' else '' }}">RU</a> | 
-                <a href="/change_lang/en" class="{{ 'active' if session.get('lang')=='en' else '' }}">EN</a>
+                <a href="/change_lang/hy" class="{{ 'active' if session.get('lang', 'hy')=='hy' else '' }}">AM (֏)</a> | 
+                <a href="/change_lang/ru" class="{{ 'active' if session.get('lang')=='ru' else '' }}">RU (₽)</a> | 
+                <a href="/change_lang/en" class="{{ 'active' if session.get('lang')=='en' else '' }}">EN ($)</a>
             </span>
             <a href="/add_product">+ {{ t['add_product'] }}</a>
             <a href="/cart">🛒 {{ t['cart'] }} ({{ cart_count }})</a>
@@ -126,7 +170,7 @@ INDEX_TEMPLATE = HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
     <div class="card">
         <img src="{{ p.image_url }}" alt="{{ p.name }}">
         <h3>{{ p.name }}</h3>
-        <p><strong>{{ t['price'] }}:</strong> ${{ p.price }}</p>
+        <p><strong>{{ t['price'] }}:</strong> {{ p.price | format_price }}</p>
         <div class="action-btns">
             <a href="/add_to_cart/{{ p.id }}" class="btn">{{ t['buy'] }}</a>
             <a href="/delete_product/{{ p.id }}" class="btn btn-danger" onclick="return confirm('Վստա՞հ եք, որ ուզում եք հանել վաճառքից։');">🗑️</a>
@@ -144,8 +188,8 @@ ADD_PRODUCT_TEMPLATE = HTML_LAYOUT.replace("{% block content %}{% endblock %}", 
         <input type="text" name="name" required>
     </div>
     <div class="form-group">
-        <label>{{ t['price'] }} ($)</label>
-        <input type="number" step="0.01" name="price" required>
+        <label>{{ t['price'] }} (ՀՀ ԴՐԱՄ / AMD)</label>
+        <input type="number" step="1" name="price" required placeholder="Օրինակ՝ 10000">
     </div>
     <div class="form-group">
         <label>{{ t['image_url'] }}</label>
@@ -167,12 +211,12 @@ CART_TEMPLATE = HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
     {% for item in items %}
     <tr>
         <td>{{ item.name }}</td>
-        <td>${{ item.price }}</td>
+        <td>{{ item.price | format_price }}</td>
         <td><a href="/remove_from_cart/{{ item.id }}" class="btn btn-danger">{{ t['remove'] }}</a></td>
     </tr>
     {% endfor %}
 </table>
-<h3 style="margin-top: 20px;">Ընդհանուր: ${{ total }}</h3>
+<h3 style="margin-top: 20px;">Ընդհանուր: {{ total | format_price }}</h3>
 <a href="/checkout" class="btn" style="background: #16a34a;">{{ t['checkout'] }}</a>
 {% else %}
 <p>{{ t['empty_cart'] }}</p>
@@ -232,7 +276,8 @@ def cart():
     for p_id, qty in cart.items():
         product = Product.query.get(int(p_id))
         if product:
-            items.append(product)
+            for _ in range(qty):
+                items.append(product)
             total += product.price * qty
             
     cart_count = sum(cart.values())
@@ -242,7 +287,9 @@ def cart():
 def remove_from_cart(product_id):
     cart = session.get('cart', {})
     if str(product_id) in cart:
-        del cart[str(product_id)]
+        cart[str(product_id)] -= 1
+        if cart[str(product_id)] <= 0:
+            del cart[str(product_id)]
         session['cart'] = cart
     return redirect(url_for('cart'))
 
