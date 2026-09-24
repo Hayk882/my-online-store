@@ -61,6 +61,10 @@ TRANSLATIONS = {
     }
 }
 
+def get_t():
+    lang = session.get('lang', 'hy')
+    return TRANSLATIONS.get(lang, TRANSLATIONS['hy'])
+
 # --- HTML Շաբլոն ---
 HTML_LAYOUT = """
 <!DOCTYPE html>
@@ -96,9 +100,9 @@ HTML_LAYOUT = """
         <h1><a href="/">{{ t['title'] }}</a></h1>
         <nav>
             <span class="lang-picker">
-                <a href="/change_lang/hy" class="{{ 'active' if session.get('lang', 'hy')=='hy' else '' }}">🇦🇲 AM</a> | 
-                <a href="/change_lang/ru" class="{{ 'active' if session.get('lang')=='ru' else '' }}">🇷🇺 RU</a> | 
-                <a href="/change_lang/en" class="{{ 'active' if session.get('lang')=='en' else '' }}">🇬🇧 EN</a>
+                <a href="/change_lang/hy" class="{{ 'active' if session.get('lang', 'hy')=='hy' else '' }}">AM</a> | 
+                <a href="/change_lang/ru" class="{{ 'active' if session.get('lang')=='ru' else '' }}">RU</a> | 
+                <a href="/change_lang/en" class="{{ 'active' if session.get('lang')=='en' else '' }}">EN</a>
             </span>
             <a href="/add_product">+ {{ t['add_product'] }}</a>
             <a href="/cart">🛒 {{ t['cart'] }} ({{ cart_count }})</a>
