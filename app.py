@@ -37,7 +37,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False)
     image_url = db.Column(db.String(500), nullable=False)
-    address = db.Column(db.String(200), nullable=False, default="Ереван")
+    address = db.Column(db.String(200), nullable=False, default="Երևան")
     seller_phone = db.Column(db.String(30), nullable=False, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     is_vip = db.Column(db.Boolean, default=False)  # Statws VIP
@@ -125,7 +125,9 @@ TRANSLATIONS = {
         'service_fee': 'Կայքի միջնորդավճար (5%)',
         'final_total': 'Վերջնական գումար',
         'limit_reached': 'Դուք արդեն ավելացրել եք 3 ապրանք: Ավելին ավելացնելու համար գնեք PRO:',
-        'buy_pro_now': 'Գնել PRO հիմա'
+        'buy_pro_now': 'Գնել PRO հիմա',
+        'welcome_title': 'Բարի գալուստ One-Shop',
+        'welcome_sub': 'Գտեք լավագույն ապրանքները լավագույն գներով'
     },
     'ru': {
         'login': 'Войти',
@@ -162,7 +164,9 @@ TRANSLATIONS = {
         'service_fee': 'Комиссия сайта (5%)',
         'final_total': 'Итоговая сумма',
         'limit_reached': 'Вы уже добавили 3 товара. Чтобы добавлять больше, купите PRO аккаунт.',
-        'buy_pro_now': 'Купить PRO сейчас'
+        'buy_pro_now': 'Купить PRO сейчас',
+        'welcome_title': 'Добро пожаловать в One-Shop',
+        'welcome_sub': 'Найдите лучшие товары по лучшим ценам'
     },
     'en': {
         'login': 'Login',
@@ -199,7 +203,9 @@ TRANSLATIONS = {
         'service_fee': 'Platform Commission (5%)',
         'final_total': 'Final Amount',
         'limit_reached': 'You have reached the 3-product limit. Upgrade to PRO to post unlimited products.',
-        'buy_pro_now': 'Buy PRO Now'
+        'buy_pro_now': 'Buy PRO Now',
+        'welcome_title': 'Welcome to One-Shop',
+        'welcome_sub': 'Find the best deals at the best prices'
     }
 }
 
@@ -247,6 +253,36 @@ HTML_LAYOUT = """
         .lang-picker a { color: #f3f4f6; margin-left: 5px; text-decoration: none; }
         .lang-picker a.active { font-weight: bold; text-decoration: underline; color: #3b82f6; }
         .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
+        
+        /* Բաններ բաժին նկարով */
+        .hero-banner {
+            width: 100%;
+            height: 320px;
+            background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('https://images.unsplash.com/photo-1472851294608-062f824d29cc?q=80&w=1200');
+            background-size: cover;
+            background-position: center;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .hero-banner h2 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.6);
+        }
+
+        .hero-banner p {
+            font-size: 18px;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
+        }
+
         .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; position: relative; }
         .card.vip { border: 2px solid #f59e0b; background: #fffbeb; }
@@ -314,6 +350,12 @@ def index():
     cart_count = sum(cart.values())
     return render_template_string(
         HTML_LAYOUT.replace("{% block content %}{% endblock %}", """
+        <!-- Նկարով Բաններ -->
+        <div class="hero-banner">
+            <h2>{{ t('welcome_title') }}</h2>
+            <p>{{ t('welcome_sub') }}</p>
+        </div>
+
         <div class="products-grid">
             {% for p in products %}
             <div class="card {{ 'vip' if p.is_vip else '' }}">
@@ -437,7 +479,6 @@ def logout():
 @app.route('/add_product', methods=['GET', 'POST'])
 @login_required
 def add_product():
-    # Gwiriad terfyn: O ddim yn PRO ac eisoes wedi cyhoeddi 3 eitem neu fwy
     user_products_count = Product.query.filter_by(user_id=current_user.id).count()
     limit_reached = (not current_user.is_pro) and (user_products_count >= 3)
 
