@@ -68,7 +68,7 @@ class Message(db.Model):
 
 
 @login_manager.user_loader
-v_user(user_id):
+def v_user(user_id):  # կամ def load_user(user_id):
   return User.query.get(int(user_id))
 
 
