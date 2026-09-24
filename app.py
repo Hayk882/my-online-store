@@ -332,8 +332,8 @@ HTML_LAYOUT = """
 <body>
     <header>
         <a href="/" class="logo-container">
-            <!-- Քո նոր լոգոյի նկարը -->
-            <img src="https://i.ibb.co/3ykGZ2fN/One-Shop-circular-logo.png" alt="One-Shop Logo" class="logo-img">
+            <!-- Քո ուղարկած Discord-ի լոգոյի հղումը -->
+            <img src="https://cdn.discordapp.com/attachments/1324696987404075080/1552693490390138981/One_Shop_circular_logo.png?ex=6ab689ff&is=6ab5387f&hm=a6694c6fb85adea9a3901345afaa1ccb563155acc292eaf5e05077d9d7e40146&" alt="One-Shop Logo" class="logo-img">
             <span class="logo-text">One-Shop</span>
         </a>
         <nav>
